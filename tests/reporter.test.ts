@@ -20,7 +20,7 @@ const makeReport = (findings: Finding[], vectorName = "correctness"): ScanReport
 
 const makeTest = (finding: Finding): GeneratedTest => ({
   finding,
-  filePath: `tests/vigil/${finding.file}-L${finding.line}.test.ts`,
+  filePath: `tests/brunt/${finding.file}-L${finding.line}.test.ts`,
   content: "test('fails', () => expect(true).toBe(false));",
 });
 
@@ -66,7 +66,7 @@ describe("formatJson", () => {
     expect(parsed.vectors[0].name).toBe("correctness");
     expect(parsed.vectors[0].findings[0].file).toBe("src/api.ts");
     expect(parsed.vectors[0].findings[0].severity).toBe("high");
-    expect(parsed.vectors[0].findings[0].testFile).toBe("tests/vigil/src/api.ts-L42.test.ts");
+    expect(parsed.vectors[0].findings[0].testFile).toBe("tests/brunt/src/api.ts-L42.test.ts");
   });
 
   test("returns empty vectors when clean", () => {

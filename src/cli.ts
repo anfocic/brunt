@@ -62,11 +62,11 @@ function parseArgs(argv: string[]): Args {
 
 function printHelp() {
   console.log(`
-vigil - adversarial AI code review
+brunt - adversarial AI code review
 
 USAGE
-  vigil scan [options]
-  vigil list
+  brunt scan [options]
+  brunt list
 
 COMMANDS
   scan    Analyze a diff for bugs and vulnerabilities
@@ -88,7 +88,7 @@ function printList() {
   for (const v of vectors) {
     console.log(`  ${v.name.padEnd(16)} ${v.description}`);
   }
-  console.log(`\nUse --vectors to select: vigil scan --vectors ${vectors.map((v) => v.name).join(",")}\n`);
+  console.log(`\nUse --vectors to select: brunt scan --vectors ${vectors.map((v) => v.name).join(",")}\n`);
 }
 
 async function main() {
@@ -106,14 +106,14 @@ async function main() {
     }
 
     if (args.command !== "scan") {
-      console.error(`Unknown command: ${args.command}. Run "vigil help" for usage.`);
+      console.error(`Unknown command: ${args.command}. Run "brunt help" for usage.`);
       process.exit(2);
     }
 
     const exitCode = await run(args);
     process.exit(exitCode);
   } catch (err) {
-    console.error(`vigil error: ${err instanceof Error ? err.message : err}`);
+    console.error(`brunt error: ${err instanceof Error ? err.message : err}`);
     process.exit(2);
   }
 }

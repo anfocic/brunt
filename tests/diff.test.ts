@@ -6,7 +6,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 
 function createTempGitRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "vigil-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "brunt-test-"));
   spawnSync("git", ["init"], { cwd: dir });
   spawnSync("git", ["config", "user.email", "test@test.com"], { cwd: dir });
   spawnSync("git", ["config", "user.name", "test"], { cwd: dir });

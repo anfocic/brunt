@@ -26,7 +26,7 @@ export function shouldFail(findings: Finding[], failOn: Severity): boolean {
 
 export function formatText(report: ScanReport, tests: GeneratedTest[]): string {
   if (report.totalFindings === 0) {
-    return `${BOLD}vigil${RESET} — no issues found. ${DIM}(${report.totalDuration}ms)${RESET}\n`;
+    return `${BOLD}brunt${RESET} — no issues found. ${DIM}(${report.totalDuration}ms)${RESET}\n`;
   }
 
   const testMap = new Map<string, GeneratedTest>();
@@ -35,7 +35,7 @@ export function formatText(report: ScanReport, tests: GeneratedTest[]): string {
     testMap.set(key, t);
   }
 
-  let out = `\n${BOLD}vigil${RESET} — found ${report.totalFindings} issue${report.totalFindings === 1 ? "" : "s"} ${DIM}(${report.totalDuration}ms)${RESET}\n`;
+  let out = `\n${BOLD}brunt${RESET} — found ${report.totalFindings} issue${report.totalFindings === 1 ? "" : "s"} ${DIM}(${report.totalDuration}ms)${RESET}\n`;
 
   for (const vector of report.vectors) {
     if (vector.findings.length === 0) continue;

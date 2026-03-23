@@ -1,4 +1,4 @@
-# Vigil
+# Brunt
 
 Adversarial AI code review tool. Scans diffs, finds correctness bugs, generates failing tests as proof.
 
@@ -10,7 +10,7 @@ Adversarial AI code review tool. Scans diffs, finds correctness bugs, generates 
 ## Commands
 - `bun run src/cli.ts scan` -- run a scan locally
 - `bun test` -- run tests
-- `bun build --compile --outfile dist/vigil src/cli.ts` -- build binary
+- `bun build --compile --outfile dist/brunt src/cli.ts` -- build binary
 
 ## Code Conventions
 - No comments unless logic is non-obvious

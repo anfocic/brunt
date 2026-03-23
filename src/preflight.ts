@@ -5,7 +5,7 @@ export async function checkGitRepo(): Promise<void> {
   });
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
-    throw new Error("Not a git repository. Run vigil from inside a git project.");
+    throw new Error("Not a git repository. Run brunt from inside a git project.");
   }
 }
 

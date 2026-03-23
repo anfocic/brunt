@@ -11,31 +11,31 @@ async function detectFramework(): Promise<TestFramework> {
   const checks: Array<{ file: string; framework: TestFramework }> = [
     {
       file: "vitest.config.ts",
-      framework: { name: "vitest", extension: ".test.ts", dir: "tests/vigil" },
+      framework: { name: "vitest", extension: ".test.ts", dir: "tests/brunt" },
     },
     {
       file: "vitest.config.js",
-      framework: { name: "vitest", extension: ".test.ts", dir: "tests/vigil" },
+      framework: { name: "vitest", extension: ".test.ts", dir: "tests/brunt" },
     },
     {
       file: "jest.config.ts",
-      framework: { name: "jest", extension: ".test.ts", dir: "__tests__/vigil" },
+      framework: { name: "jest", extension: ".test.ts", dir: "__tests__/brunt" },
     },
     {
       file: "jest.config.js",
-      framework: { name: "jest", extension: ".test.js", dir: "__tests__/vigil" },
+      framework: { name: "jest", extension: ".test.js", dir: "__tests__/brunt" },
     },
     {
       file: "pytest.ini",
-      framework: { name: "pytest", extension: "_test.py", dir: "tests/vigil" },
+      framework: { name: "pytest", extension: "_test.py", dir: "tests/brunt" },
     },
     {
       file: "pyproject.toml",
-      framework: { name: "pytest", extension: "_test.py", dir: "tests/vigil" },
+      framework: { name: "pytest", extension: "_test.py", dir: "tests/brunt" },
     },
     {
       file: "Cargo.toml",
-      framework: { name: "cargo", extension: "_test.rs", dir: "tests/vigil" },
+      framework: { name: "cargo", extension: "_test.rs", dir: "tests/brunt" },
     },
   ];
 
@@ -49,13 +49,13 @@ async function detectFramework(): Promise<TestFramework> {
   try {
     const pkg = await Bun.file("package.json").json();
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-    if (deps.vitest) return { name: "vitest", extension: ".test.ts", dir: "tests/vigil" };
-    if (deps.jest) return { name: "jest", extension: ".test.ts", dir: "__tests__/vigil" };
-    if (deps.mocha) return { name: "mocha", extension: ".test.ts", dir: "test/vigil" };
+    if (deps.vitest) return { name: "vitest", extension: ".test.ts", dir: "tests/brunt" };
+    if (deps.jest) return { name: "jest", extension: ".test.ts", dir: "__tests__/brunt" };
+    if (deps.mocha) return { name: "mocha", extension: ".test.ts", dir: "test/brunt" };
   } catch {}
 
   // default to bun:test
-  return { name: "bun:test", extension: ".test.ts", dir: "tests/vigil" };
+  return { name: "bun:test", extension: ".test.ts", dir: "tests/brunt" };
 }
 
 function buildTestPrompt(finding: Finding, framework: TestFramework): string {

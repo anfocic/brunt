@@ -20,7 +20,7 @@ describe("cli", () => {
   test("shows help with no args", () => {
     const { stdout, exitCode } = run("help");
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("vigil - adversarial AI code review");
+    expect(stdout).toContain("brunt - adversarial AI code review");
     expect(stdout).toContain("--diff");
     expect(stdout).toContain("--provider");
     expect(stdout).toContain("--vectors");
@@ -29,7 +29,7 @@ describe("cli", () => {
   test("shows help with --help flag", () => {
     const { stdout, exitCode } = run("--help");
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("vigil - adversarial AI code review");
+    expect(stdout).toContain("brunt - adversarial AI code review");
   });
 
   test("rejects unknown commands", () => {

@@ -1,37 +1,37 @@
-# Vigil
+# Brunt
 
 Adversarial AI code review. Finds bugs, generates failing tests as proof.
 
-Vigil scans your git diffs, runs adversarial analysis via LLM, and outputs
+Brunt scans your git diffs, runs adversarial analysis via LLM, and outputs
 committable test files that prove the bugs it finds. No opinions — just proof.
 
 ## Quick Start
 
 ```bash
 # Install
-npm i -g vigil-review
+npm i -g brunt
 
 # Scan your last commit (uses Claude Code CLI — free with Max plan)
-vigil scan
+brunt scan
 
 # Scan staged changes
-vigil scan --diff --cached
+brunt scan --diff --cached
 
 # Scan a PR range
-vigil scan --diff origin/main..HEAD
+brunt scan --diff origin/main..HEAD
 ```
 
 ## What It Does
 
 ```
-$ vigil scan --diff HEAD~1
+$ brunt scan --diff HEAD~1
 
 Parsing diff...
 Analyzing 3 files...
 Running 2 vectors via claude-cli...
 Found 2 issues. Generating proof tests...
 
-vigil — found 2 issues (14230ms)
+brunt — found 2 issues (14230ms)
 
 [correctness] 1 finding (8102ms)
 
@@ -39,7 +39,7 @@ vigil — found 2 issues (14230ms)
   parseInt without radix or NaN handling
   parseInt('abc') returns NaN which propagates silently.
   Reproduction: Call parseAge('abc') — returns NaN instead of throwing
-  Test: tests/vigil/src-utils-ts-L23.test.ts
+  Test: tests/brunt/src-utils-ts-L23.test.ts
 
 [security] 1 finding (14201ms)
 
@@ -47,14 +47,14 @@ vigil — found 2 issues (14230ms)
   SQL injection in user search endpoint
   Query parameter interpolated directly into SQL string.
   Reproduction: curl 'localhost:3000/api/users?q=1' OR 1=1--'
-  Test: tests/vigil/src-api-users-ts-L34.test.ts
+  Test: tests/brunt/src-api-users-ts-L34.test.ts
 ```
 
 Every finding includes a generated test file you can run immediately.
 
 ## Vectors
 
-Vigil runs multiple analysis vectors in parallel:
+Brunt runs multiple analysis vectors in parallel:
 
 | Vector | What it finds |
 |---|---|
@@ -63,19 +63,19 @@ Vigil runs multiple analysis vectors in parallel:
 
 ```bash
 # Run all vectors (default)
-vigil scan
+brunt scan
 
 # Run specific vectors
-vigil scan --vectors security
-vigil scan --vectors correctness,security
+brunt scan --vectors security
+brunt scan --vectors correctness,security
 
 # List available vectors
-vigil list
+brunt list
 ```
 
 ## Providers
 
-Vigil works with your existing Claude setup — no extra API key needed.
+Brunt works with your existing Claude setup — no extra API key needed.
 
 | Provider | Cost | Setup |
 |---|---|---|
@@ -84,10 +84,10 @@ Vigil works with your existing Claude setup — no extra API key needed.
 
 ```bash
 # Uses your Claude Code subscription (default)
-vigil scan
+brunt scan
 
 # Uses Anthropic API directly
-ANTHROPIC_API_KEY=sk-... vigil scan --provider anthropic
+ANTHROPIC_API_KEY=sk-... brunt scan --provider anthropic
 ```
 
 ## CI Integration
@@ -95,22 +95,22 @@ ANTHROPIC_API_KEY=sk-... vigil scan --provider anthropic
 ### GitHub Actions
 
 ```yaml
-name: Vigil Review
+name: Brunt Review
 on: [pull_request]
 
 jobs:
-  vigil:
+  brunt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install Vigil
-        run: npm i -g vigil-review
+      - name: Install Brunt
+        run: npm i -g brunt
 
-      - name: Run Vigil
-        run: vigil scan --diff origin/main..HEAD --no-tests --fail-on critical
+      - name: Run Brunt
+        run: brunt scan --diff origin/main..HEAD --no-tests --fail-on critical
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
@@ -121,7 +121,7 @@ jobs:
 |---|---|
 | 0 | No findings above threshold |
 | 1 | Findings at or above `--fail-on` severity |
-| 2 | Vigil error (config, provider, etc.) |
+| 2 | Brunt error (config, provider, etc.) |
 
 ## Options
 
@@ -137,7 +137,7 @@ jobs:
 ## JSON Output
 
 ```bash
-vigil scan --format json 2>/dev/null | jq .
+brunt scan --format json 2>/dev/null | jq .
 ```
 
 Progress messages go to stderr, JSON goes to stdout — safe to pipe.
@@ -154,8 +154,8 @@ Progress messages go to stderr, JSON goes to stdout — safe to pipe.
 ## Development
 
 ```bash
-git clone https://github.com/your-org/vigil.git
-cd vigil
+git clone https://github.com/your-org/brunt.git
+cd brunt
 bun install
 bun test
 bun run src/cli.ts scan

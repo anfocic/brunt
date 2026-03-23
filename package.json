@@ -1,14 +1,14 @@
 {
-  "name": "vigil-review",
+  "name": "brunt",
   "version": "0.1.0",
   "description": "Adversarial AI code review. Finds bugs, generates failing tests as proof.",
   "type": "module",
   "bin": {
-    "vigil": "src/cli.ts"
+    "brunt": "src/cli.ts"
   },
   "scripts": {
     "dev": "bun run src/cli.ts",
-    "build": "bun build --compile --outfile dist/vigil src/cli.ts",
+    "build": "bun build --compile --outfile dist/brunt src/cli.ts",
     "test": "bun test"
   },
   "devDependencies": {

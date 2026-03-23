@@ -1,4 +1,4 @@
-name: 'Vigil Review'
+name: 'Brunt Review'
 description: 'Adversarial AI code review. Finds bugs, generates failing tests as proof.'
 branding:
   icon: 'shield'
@@ -28,11 +28,11 @@ runs:
     - name: Install Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Install Vigil
+    - name: Install Brunt
       shell: bash
-      run: npm i -g vigil-review
+      run: npm i -g brunt
 
-    - name: Run Vigil
+    - name: Run Brunt
       shell: bash
       run: |
         ARGS="--diff origin/${{ github.base_ref }}..HEAD --provider ${{ inputs.provider }} --fail-on ${{ inputs.fail-on }}"
@@ -42,4 +42,4 @@ runs:
         if [ "${{ inputs.generate-tests }}" != "true" ]; then
           ARGS="$ARGS --no-tests"
         fi
-        vigil scan $ARGS
+        brunt scan $ARGS
