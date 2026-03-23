@@ -1,22 +1,18 @@
+import { execFile } from "node:child_process";
 import type { Provider } from "./types.ts";
 
 export class ClaudeCliProvider implements Provider {
   name = "claude-cli";
 
   async query(prompt: string): Promise<string> {
-    const proc = Bun.spawn(["claude", "-p", prompt], {
-      stdout: "pipe",
-      stderr: "pipe",
+    return new Promise((resolve, reject) => {
+      execFile("claude", ["-p", prompt], { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(`claude-cli failed: ${(stderr ?? "").trim() || error.message}`));
+          return;
+        }
+        resolve((stdout ?? "").trim());
+      });
     });
-
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-    const exitCode = await proc.exited;
-
-    if (exitCode !== 0) {
-      throw new Error(`claude-cli failed: ${stderr.trim()}`);
-    }
-
-    return stdout.trim();
   }
 }

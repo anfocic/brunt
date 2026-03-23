@@ -1,3 +1,4 @@
+import { readFile, access, mkdir, writeFile } from "node:fs/promises";
 import type { Finding } from "../vectors/types.ts";
 import type { Provider } from "../providers/types.ts";
 
@@ -6,6 +7,15 @@ type TestFramework = {
   extension: string;
   dir: string;
 };
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function detectFramework(): Promise<TestFramework> {
   const checks: Array<{ file: string; framework: TestFramework }> = [
@@ -30,32 +40,27 @@ async function detectFramework(): Promise<TestFramework> {
       framework: { name: "pytest", extension: "_test.py", dir: "tests/brunt" },
     },
     {
-      file: "pyproject.toml",
-      framework: { name: "pytest", extension: "_test.py", dir: "tests/brunt" },
-    },
-    {
       file: "Cargo.toml",
       framework: { name: "cargo", extension: "_test.rs", dir: "tests/brunt" },
     },
   ];
 
   for (const check of checks) {
-    if (await Bun.file(check.file).exists()) {
+    if (await fileExists(check.file)) {
       return check.framework;
     }
   }
 
-  // check package.json for test runner hints
   try {
-    const pkg = await Bun.file("package.json").json();
+    const raw = await readFile("package.json", "utf-8");
+    const pkg = JSON.parse(raw);
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
     if (deps.vitest) return { name: "vitest", extension: ".test.ts", dir: "tests/brunt" };
     if (deps.jest) return { name: "jest", extension: ".test.ts", dir: "__tests__/brunt" };
     if (deps.mocha) return { name: "mocha", extension: ".test.ts", dir: "test/brunt" };
   } catch {}
 
-  // default to bun:test
-  return { name: "bun:test", extension: ".test.ts", dir: "tests/brunt" };
+  return { name: "node:test", extension: ".test.ts", dir: "tests/brunt" };
 }
 
 function buildTestPrompt(finding: Finding, framework: TestFramework): string {
@@ -82,10 +87,8 @@ Respond with ONLY the test file content, no markdown fences, no explanation.`;
 function cleanLlmOutput(raw: string): string {
   let text = raw;
 
-  // strip markdown fences
   text = text.replace(/^```[\w]*\n?/gm, "").replace(/\n?```$/gm, "");
 
-  // remove common LLM preamble/postamble lines
   const lines = text.split("\n");
   const codeStart = lines.findIndex(
     (l) => l.startsWith("import ") || l.startsWith("const ") ||
@@ -95,7 +98,6 @@ function cleanLlmOutput(raw: string): string {
   );
 
   if (codeStart > 0) {
-    // check if lines before code start are just chatter
     const preamble = lines.slice(0, codeStart).join("\n").trim();
     const looksLikeChatter = !preamble.includes("import ") && !preamble.includes("require(");
     if (looksLikeChatter) {
@@ -103,7 +105,6 @@ function cleanLlmOutput(raw: string): string {
     }
   }
 
-  // remove trailing chatter after the last closing brace/semicolon
   const trimmedLines = text.split("\n");
   let lastCodeLine = trimmedLines.length - 1;
   for (let i = trimmedLines.length - 1; i >= 0; i--) {
@@ -113,7 +114,6 @@ function cleanLlmOutput(raw: string): string {
       lastCodeLine = i;
       break;
     }
-    // if it looks like prose, keep trimming
     if (trimmed.match(/^[A-Z]/) && trimmed.includes(" ")) {
       lastCodeLine = i - 1;
     } else {
@@ -122,8 +122,13 @@ function cleanLlmOutput(raw: string): string {
   }
 
   text = trimmedLines.slice(0, lastCodeLine + 1).join("\n");
+  const result = text.trim() + "\n";
 
-  return text.trim() + "\n";
+  if (result.trim().length < 10) {
+    return "";
+  }
+
+  return result;
 }
 
 export type GeneratedTest = {
@@ -145,6 +150,11 @@ export async function generateTests(
 
     const cleaned = cleanLlmOutput(content);
 
+    if (!cleaned) {
+      console.error(`Warning: failed to generate test for ${finding.file}:${finding.line}, skipping.`);
+      continue;
+    }
+
     const safeName = finding.file
       .replace(/[^a-zA-Z0-9]/g, "-")
       .replace(/-+/g, "-")
@@ -161,7 +171,7 @@ export async function generateTests(
 export async function writeTests(tests: GeneratedTest[]): Promise<void> {
   for (const test of tests) {
     const dir = test.filePath.split("/").slice(0, -1).join("/");
-    await Bun.spawn(["mkdir", "-p", dir]).exited;
-    await Bun.write(test.filePath, test.content);
+    await mkdir(dir, { recursive: true });
+    await writeFile(test.filePath, test.content, "utf-8");
   }
 }

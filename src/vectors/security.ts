@@ -1,6 +1,6 @@
 import type { DiffFile } from "../diff.ts";
-import type { Provider } from "../providers/types.ts";
-import type { Vector, Finding } from "./types.ts";
+import type { Vector } from "./types.ts";
+import { parseFindings } from "./parse.ts";
 
 function buildPrompt(files: DiffFile[], context: Map<string, string>): string {
   let diffSection = "";
@@ -70,30 +70,6 @@ Example:
 JSON array:`;
 }
 
-function parseFindings(raw: string): Finding[] {
-  const jsonMatch = raw.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) return [];
-
-  try {
-    const parsed = JSON.parse(jsonMatch[0]);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter(
-      (f: unknown): f is Finding =>
-        typeof f === "object" &&
-        f !== null &&
-        "file" in f &&
-        "line" in f &&
-        "severity" in f &&
-        "title" in f &&
-        "description" in f &&
-        "reproduction" in f
-    );
-  } catch {
-    return [];
-  }
-}
-
 export const security: Vector = {
   name: "security",
   description: "Finds injection, auth bypass, data exposure, and other exploitable vulnerabilities",
@@ -103,6 +79,6 @@ export const security: Vector = {
 
     const prompt = buildPrompt(files, context);
     const response = await provider.query(prompt);
-    return parseFindings(response);
+    return parseFindings(response, "security");
   },
 };

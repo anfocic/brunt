@@ -25,21 +25,24 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Install Bun
-      uses: oven-sh/setup-bun@v2
-
     - name: Install Brunt
       shell: bash
       run: npm i -g brunt
 
     - name: Run Brunt
       shell: bash
+      env:
+        BRUNT_BASE_REF: ${{ github.base_ref }}
+        BRUNT_PROVIDER: ${{ inputs.provider }}
+        BRUNT_FAIL_ON: ${{ inputs.fail-on }}
+        BRUNT_VECTORS: ${{ inputs.vectors }}
+        BRUNT_GENERATE_TESTS: ${{ inputs.generate-tests }}
       run: |
-        ARGS="--diff origin/${{ github.base_ref }}..HEAD --provider ${{ inputs.provider }} --fail-on ${{ inputs.fail-on }}"
-        if [ -n "${{ inputs.vectors }}" ]; then
-          ARGS="$ARGS --vectors ${{ inputs.vectors }}"
+        ARGS="--diff origin/${BRUNT_BASE_REF}..HEAD --provider ${BRUNT_PROVIDER} --fail-on ${BRUNT_FAIL_ON}"
+        if [ -n "${BRUNT_VECTORS}" ]; then
+          ARGS="${ARGS} --vectors ${BRUNT_VECTORS}"
         fi
-        if [ "${{ inputs.generate-tests }}" != "true" ]; then
-          ARGS="$ARGS --no-tests"
+        if [ "${BRUNT_GENERATE_TESTS}" != "true" ]; then
+          ARGS="${ARGS} --no-tests"
         fi
-        brunt scan $ARGS
+        brunt scan ${ARGS}

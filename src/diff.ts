@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+
 export type DiffHunk = {
   added: string[];
   removed: string[];
@@ -56,7 +58,7 @@ function parseDiff(raw: string): DiffFile[] {
   const fileChunks = raw.split(/^diff --git /m).filter(Boolean);
 
   for (const chunk of fileChunks) {
-    const pathMatch = chunk.match(/^a\/(.+?) b\//);
+    const pathMatch = chunk.match(/^a\/.+? b\/(.+)/);
     if (!pathMatch) continue;
 
     const path = pathMatch[1];
@@ -89,15 +91,18 @@ function parseDiff(raw: string): DiffFile[] {
   return files;
 }
 
-export async function getDiff(range: string): Promise<DiffFile[]> {
-  const proc = Bun.spawn(["git", "diff", range], {
-    stdout: "pipe",
-    stderr: "pipe",
+function spawn(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+      resolve({ stdout: stdout ?? "", stderr: stderr ?? "", exitCode: error?.code ? 1 : error ? 1 : 0 });
+    });
   });
+}
 
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  const exitCode = await proc.exited;
+export async function getDiff(range: string): Promise<DiffFile[]> {
+  // Use -- separator to prevent arg injection, but not when range is a flag like --cached
+  const args = range.startsWith("-") ? ["diff", range] : ["diff", "--", range];
+  const { stdout, stderr, exitCode } = await spawn("git", args);
 
   if (exitCode !== 0) {
     throw new Error(`git diff failed: ${stderr.trim()}`);
