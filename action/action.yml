@@ -1,0 +1,45 @@
+name: 'Vigil Review'
+description: 'Adversarial AI code review. Finds bugs, generates failing tests as proof.'
+branding:
+  icon: 'shield'
+  color: 'red'
+
+inputs:
+  vectors:
+    description: 'Comma-separated vectors to run (default: all)'
+    required: false
+    default: ''
+  fail-on:
+    description: 'Fail at this severity: low, medium, high, critical'
+    required: false
+    default: 'critical'
+  provider:
+    description: 'LLM provider: anthropic'
+    required: false
+    default: 'anthropic'
+  generate-tests:
+    description: 'Generate proof test files'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Bun
+      uses: oven-sh/setup-bun@v2
+
+    - name: Install Vigil
+      shell: bash
+      run: npm i -g vigil-review
+
+    - name: Run Vigil
+      shell: bash
+      run: |
+        ARGS="--diff origin/${{ github.base_ref }}..HEAD --provider ${{ inputs.provider }} --fail-on ${{ inputs.fail-on }}"
+        if [ -n "${{ inputs.vectors }}" ]; then
+          ARGS="$ARGS --vectors ${{ inputs.vectors }}"
+        fi
+        if [ "${{ inputs.generate-tests }}" != "true" ]; then
+          ARGS="$ARGS --no-tests"
+        fi
+        vigil scan $ARGS

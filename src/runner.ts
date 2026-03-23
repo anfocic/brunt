@@ -8,6 +8,7 @@ import { formatText, formatJson, shouldFail } from "./reporter.ts";
 import { ClaudeCliProvider } from "./providers/claude-cli.ts";
 import { AnthropicProvider } from "./providers/anthropic.ts";
 import type { Provider } from "./providers/types.ts";
+import { checkGitRepo, checkProvider } from "./preflight.ts";
 
 function getProvider(name: string): Provider {
   switch (name) {
@@ -21,23 +22,26 @@ function getProvider(name: string): Provider {
 }
 
 export async function run(args: Args): Promise<number> {
+  await checkGitRepo();
+  await checkProvider(args.provider);
+
   const provider = getProvider(args.provider);
   const vectors = getVectors(args.vectors);
   const scanStart = performance.now();
 
-  console.log("Parsing diff...");
+  console.error("Parsing diff...");
   const files = await getDiff(args.diff);
 
   if (files.length === 0) {
-    console.log("No code changes found in diff.");
+    console.error("No code changes found in diff.");
     return 0;
   }
 
-  console.log(`Analyzing ${files.length} file${files.length === 1 ? "" : "s"}...`);
+  console.error(`Analyzing ${files.length} file${files.length === 1 ? "" : "s"}...`);
   const context = await loadContext(files);
 
   // Run vectors in parallel (like Probe's tokio::join!)
-  console.log(`Running ${vectors.length} vector${vectors.length === 1 ? "" : "s"} via ${provider.name}...`);
+  console.error(`Running ${vectors.length} vector${vectors.length === 1 ? "" : "s"} via ${provider.name}...`);
 
   const vectorReports: VectorReport[] = await Promise.all(
     vectors.map(async (vector) => {
@@ -60,10 +64,12 @@ export async function run(args: Args): Promise<number> {
   const allFindings = vectorReports.flatMap((v) => v.findings);
   let tests: Awaited<ReturnType<typeof generateTests>> = [];
 
-  if (allFindings.length > 0) {
-    console.log(`Found ${report.totalFindings} issue${report.totalFindings === 1 ? "" : "s"}. Generating proof tests...`);
+  if (allFindings.length > 0 && !args.noTests) {
+    console.error(`Found ${report.totalFindings} issue${report.totalFindings === 1 ? "" : "s"}. Generating proof tests...`);
     tests = await generateTests(allFindings, provider);
     await writeTests(tests);
+  } else if (allFindings.length > 0) {
+    console.error(`Found ${report.totalFindings} issue${report.totalFindings === 1 ? "" : "s"}.`);
   }
 
   const output =
@@ -71,7 +77,7 @@ export async function run(args: Args): Promise<number> {
       ? formatJson(report, tests)
       : formatText(report, tests);
 
-  console.log(output);
+  process.stdout.write(output + "\n");
 
   return shouldFail(allFindings, args.failOn) ? 1 : 0;
 }

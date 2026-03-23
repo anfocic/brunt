@@ -79,6 +79,53 @@ Requirements:
 Respond with ONLY the test file content, no markdown fences, no explanation.`;
 }
 
+function cleanLlmOutput(raw: string): string {
+  let text = raw;
+
+  // strip markdown fences
+  text = text.replace(/^```[\w]*\n?/gm, "").replace(/\n?```$/gm, "");
+
+  // remove common LLM preamble/postamble lines
+  const lines = text.split("\n");
+  const codeStart = lines.findIndex(
+    (l) => l.startsWith("import ") || l.startsWith("const ") ||
+           l.startsWith("describe(") || l.startsWith("test(") ||
+           l.startsWith("it(") || l.startsWith("from ") ||
+           l.startsWith("use ") || l.startsWith("#")
+  );
+
+  if (codeStart > 0) {
+    // check if lines before code start are just chatter
+    const preamble = lines.slice(0, codeStart).join("\n").trim();
+    const looksLikeChatter = !preamble.includes("import ") && !preamble.includes("require(");
+    if (looksLikeChatter) {
+      text = lines.slice(codeStart).join("\n");
+    }
+  }
+
+  // remove trailing chatter after the last closing brace/semicolon
+  const trimmedLines = text.split("\n");
+  let lastCodeLine = trimmedLines.length - 1;
+  for (let i = trimmedLines.length - 1; i >= 0; i--) {
+    const trimmed = trimmedLines[i].trim();
+    if (trimmed === "" || trimmed.startsWith("//")) continue;
+    if (trimmed.endsWith("}") || trimmed.endsWith(";") || trimmed.endsWith(")")) {
+      lastCodeLine = i;
+      break;
+    }
+    // if it looks like prose, keep trimming
+    if (trimmed.match(/^[A-Z]/) && trimmed.includes(" ")) {
+      lastCodeLine = i - 1;
+    } else {
+      break;
+    }
+  }
+
+  text = trimmedLines.slice(0, lastCodeLine + 1).join("\n");
+
+  return text.trim() + "\n";
+}
+
 export type GeneratedTest = {
   finding: Finding;
   filePath: string;
@@ -96,11 +143,7 @@ export async function generateTests(
     const prompt = buildTestPrompt(finding, framework);
     const content = await provider.query(prompt);
 
-    // strip markdown fences if the LLM included them anyway
-    const cleaned = content
-      .replace(/^```[\w]*\n?/gm, "")
-      .replace(/```$/gm, "")
-      .trim();
+    const cleaned = cleanLlmOutput(content);
 
     const safeName = finding.file
       .replace(/[^a-zA-Z0-9]/g, "-")
