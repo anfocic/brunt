@@ -4,10 +4,13 @@ import { getVectors, listVectors } from "../src/vectors/registry.ts";
 describe("vector registry", () => {
   test("listVectors returns all registered vectors", () => {
     const vectors = listVectors();
-    expect(vectors.length).toBeGreaterThanOrEqual(2);
+    expect(vectors.length).toBe(5);
     const names = vectors.map((v) => v.name);
     expect(names).toContain("correctness");
     expect(names).toContain("security");
+    expect(names).toContain("performance");
+    expect(names).toContain("resilience");
+    expect(names).toContain("business-logic");
   });
 
   test("getVectors with no args returns all", () => {

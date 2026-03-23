@@ -1,11 +1,16 @@
 import type { Vector } from "./types.ts";
 import { correctness } from "./correctness.ts";
 import { security } from "./security.ts";
+import { performance } from "./performance.ts";
+import { resilience } from "./resilience.ts";
+import { businessLogic } from "./business-logic.ts";
 
 const ALL_VECTORS: Vector[] = [
   correctness,
   security,
-  // future: performance, resilience, business-logic
+  performance,
+  resilience,
+  businessLogic,
 ];
 
 const vectorMap = new Map(ALL_VECTORS.map((v) => [v.name, v]));
