@@ -1,6 +1,8 @@
 import type { Args } from "./cli.ts";
 import { getDiff } from "./diff.ts";
 import { loadContext } from "./context.ts";
+import { sanitizeDiff } from "./sanitize.ts";
+import { injectCanary, verifyCanary } from "./canary.ts";
 import { getVectors } from "./vectors/registry.ts";
 import type { VectorReport, ScanReport } from "./vectors/types.ts";
 import { generateTests, writeTests } from "./proof/test-gen.ts";
@@ -38,15 +40,18 @@ export async function run(args: Args): Promise<number> {
   }
 
   console.error(`Analyzing ${files.length} file${files.length === 1 ? "" : "s"}...`);
-  const context = await loadContext(files);
 
-  // Run vectors in parallel (like Probe's tokio::join!)
+  const sanitizedFiles = sanitizeDiff(files);
+  const { files: filesWithCanary, canary } = injectCanary(sanitizedFiles);
+
+  const context = await loadContext(files); // context uses original files (need real paths)
+
   console.error(`Running ${vectors.length} vector${vectors.length === 1 ? "" : "s"} via ${provider.name}...`);
 
   const vectorReports: VectorReport[] = await Promise.all(
     vectors.map(async (vector) => {
       const start = performance.now();
-      const findings = await vector.analyze(files, context, provider);
+      const findings = await vector.analyze(filesWithCanary, context, provider);
       return {
         name: vector.name,
         findings,
@@ -54,6 +59,22 @@ export async function run(args: Args): Promise<number> {
       };
     })
   );
+
+  // Verify canary was detected — if not, analysis may have been compromised
+  const allRawFindings = vectorReports.flatMap((v) => v.findings);
+  const canaryFound = verifyCanary(allRawFindings, canary);
+
+  if (!canaryFound) {
+    console.error("WARNING: Canary bug was not detected. Analysis may have been compromised by prompt injection.");
+    console.error("         Results may be unreliable. Review the diff manually.");
+  }
+
+  // Strip canary findings from results — users shouldn't see them
+  for (const vr of vectorReports) {
+    vr.findings = vr.findings.filter(
+      (f) => f.file !== canary.file && !f.title.includes(canary.keyword) && !f.description.includes(canary.keyword)
+    );
+  }
 
   const report: ScanReport = {
     vectors: vectorReports,
