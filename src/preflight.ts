@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { platform } from "node:os";
 
 function spawn(cmd: string, args: string[]): Promise<number> {
   return new Promise((resolve) => {
@@ -18,7 +19,8 @@ export async function checkGitRepo(): Promise<void> {
 export async function checkProvider(provider: string): Promise<void> {
   if (provider !== "claude-cli") return;
 
-  const exitCode = await spawn("which", ["claude"]);
+  const whichCmd = platform() === "win32" ? "where" : "which";
+  const exitCode = await spawn(whichCmd, ["claude"]);
   if (exitCode !== 0) {
     throw new Error(
       'claude CLI not found. Install Claude Code or use --provider anthropic with an API key.\nSee: https://docs.anthropic.com/en/docs/claude-code'

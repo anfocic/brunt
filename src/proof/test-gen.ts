@@ -84,7 +84,7 @@ Requirements:
 Respond with ONLY the test file content, no markdown fences, no explanation.`;
 }
 
-function cleanLlmOutput(raw: string): string {
+export function cleanLlmOutput(raw: string): string {
   let text = raw;
 
   text = text.replace(/^```[\w]*\n?/gm, "").replace(/\n?```$/gm, "");
@@ -108,7 +108,7 @@ function cleanLlmOutput(raw: string): string {
   const trimmedLines = text.split("\n");
   let lastCodeLine = trimmedLines.length - 1;
   for (let i = trimmedLines.length - 1; i >= 0; i--) {
-    const trimmed = trimmedLines[i].trim();
+    const trimmed = trimmedLines[i]!.trim();
     if (trimmed === "" || trimmed.startsWith("//")) continue;
     if (trimmed.endsWith("}") || trimmed.endsWith(";") || trimmed.endsWith(")")) {
       lastCodeLine = i;

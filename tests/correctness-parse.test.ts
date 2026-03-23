@@ -1,32 +1,9 @@
 import { describe, test, expect } from "bun:test";
+import { parseFindings } from "../src/vectors/parse.ts";
 
-function parseFindings(raw: string) {
-  const jsonMatch = raw.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) return [];
-
-  try {
-    const parsed = JSON.parse(jsonMatch[0]);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter(
-      (f: any) =>
-        typeof f === "object" &&
-        f !== null &&
-        "file" in f &&
-        "line" in f &&
-        "severity" in f &&
-        "title" in f &&
-        "description" in f &&
-        "reproduction" in f
-    );
-  } catch {
-    return [];
-  }
-}
-
-describe("correctness response parsing", () => {
+describe("parseFindings", () => {
   test("parses valid JSON array", () => {
-    const raw = JSON.stringify([
+    const findings = parseFindings(JSON.stringify([
       {
         file: "src/api.ts",
         line: 10,
@@ -35,8 +12,7 @@ describe("correctness response parsing", () => {
         description: "user.name accessed without null check",
         reproduction: "Pass null user object",
       },
-    ]);
-    const findings = parseFindings(raw);
+    ]), "test");
     expect(findings.length).toBe(1);
     expect(findings[0].file).toBe("src/api.ts");
     expect(findings[0].severity).toBe("high");
@@ -59,39 +35,38 @@ describe("correctness response parsing", () => {
 \`\`\`
 
 That's all I found.`;
-    const findings = parseFindings(raw);
+    const findings = parseFindings(raw, "test");
     expect(findings.length).toBe(1);
     expect(findings[0].title).toBe("Off by one");
   });
 
   test("returns empty array for no JSON", () => {
-    expect(parseFindings("No issues found in this code.")).toEqual([]);
+    expect(parseFindings("No issues found.", "test")).toEqual([]);
   });
 
   test("returns empty array for invalid JSON", () => {
-    expect(parseFindings("[{broken json}]")).toEqual([]);
+    expect(parseFindings("[{broken json}]", "test")).toEqual([]);
   });
 
   test("returns empty array for empty array response", () => {
-    expect(parseFindings("[]")).toEqual([]);
+    expect(parseFindings("[]", "test")).toEqual([]);
   });
 
-  test("filters out malformed findings", () => {
+  test("rejects findings with wrong field types", () => {
     const raw = JSON.stringify([
-      {
-        file: "ok.ts",
-        line: 1,
-        severity: "low",
-        title: "Valid",
-        description: "This is valid",
-        reproduction: "Do X",
-      },
-      { file: "bad.ts" },
-      { severity: "high" },
+      { file: "ok.ts", line: 1, severity: "low", title: "V", description: "D", reproduction: "R" },
+      { file: "bad.ts", line: "not a number", severity: "high", title: "B", description: "D", reproduction: "R" },
+      { file: "bad2.ts", line: 1, severity: "banana", title: "B", description: "D", reproduction: "R" },
+      { file: 123, line: 1, severity: "low", title: "B", description: "D", reproduction: "R" },
     ]);
-    const findings = parseFindings(raw);
+    const findings = parseFindings(raw, "test");
     expect(findings.length).toBe(1);
     expect(findings[0].file).toBe("ok.ts");
+  });
+
+  test("rejects findings with missing fields", () => {
+    const raw = JSON.stringify([{ file: "bad.ts" }, { severity: "high" }]);
+    expect(parseFindings(raw, "test")).toEqual([]);
   });
 
   test("handles multiple valid findings", () => {
@@ -99,11 +74,11 @@ That's all I found.`;
       { file: "a.ts", line: 1, severity: "critical", title: "A", description: "D", reproduction: "R" },
       { file: "b.ts", line: 2, severity: "low", title: "B", description: "D", reproduction: "R" },
     ]);
-    expect(parseFindings(raw).length).toBe(2);
+    expect(parseFindings(raw, "test").length).toBe(2);
   });
 
   test("handles LLM preamble before JSON", () => {
     const raw = `I found several issues:\n\n[{"file":"x.ts","line":1,"severity":"high","title":"Bug","description":"Desc","reproduction":"Repro"}]`;
-    expect(parseFindings(raw).length).toBe(1);
+    expect(parseFindings(raw, "test").length).toBe(1);
   });
 });

@@ -61,7 +61,7 @@ function parseDiff(raw: string): DiffFile[] {
     const pathMatch = chunk.match(/^a\/.+? b\/(.+)/);
     if (!pathMatch) continue;
 
-    const path = pathMatch[1];
+    const path = pathMatch[1]!;
     if (shouldIgnore(path)) continue;
 
     const hunks: DiffHunk[] = [];
@@ -100,9 +100,7 @@ function spawn(cmd: string, args: string[]): Promise<{ stdout: string; stderr: s
 }
 
 export async function getDiff(range: string): Promise<DiffFile[]> {
-  // Use -- separator to prevent arg injection, but not when range is a flag like --cached
-  const args = range.startsWith("-") ? ["diff", range] : ["diff", "--", range];
-  const { stdout, stderr, exitCode } = await spawn("git", args);
+  const { stdout, stderr, exitCode } = await spawn("git", ["diff", range]);
 
   if (exitCode !== 0) {
     throw new Error(`git diff failed: ${stderr.trim()}`);
