@@ -1,4 +1,4 @@
-import type { Finding } from "../vectors/correctness.ts";
+import type { Finding } from "../vectors/types.ts";
 import type { Provider } from "../providers/types.ts";
 
 type TestFramework = {

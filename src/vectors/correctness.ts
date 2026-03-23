@@ -1,16 +1,6 @@
 import type { DiffFile } from "../diff.ts";
 import type { Provider } from "../providers/types.ts";
-
-export type Severity = "low" | "medium" | "high" | "critical";
-
-export type Finding = {
-  file: string;
-  line: number;
-  severity: Severity;
-  title: string;
-  description: string;
-  reproduction: string;
-};
+import type { Vector, Finding } from "./types.ts";
 
 function buildPrompt(files: DiffFile[], context: Map<string, string>): string {
   let diffSection = "";
@@ -99,14 +89,15 @@ function parseFindings(raw: string): Finding[] {
   }
 }
 
-export async function analyze(
-  files: DiffFile[],
-  context: Map<string, string>,
-  provider: Provider
-): Promise<Finding[]> {
-  if (files.length === 0) return [];
+export const correctness: Vector = {
+  name: "correctness",
+  description: "Finds edge cases, off-by-one errors, null handling, type coercion, and logic bugs",
 
-  const prompt = buildPrompt(files, context);
-  const response = await provider.query(prompt);
-  return parseFindings(response);
-}
+  async analyze(files, context, provider) {
+    if (files.length === 0) return [];
+
+    const prompt = buildPrompt(files, context);
+    const response = await provider.query(prompt);
+    return parseFindings(response);
+  },
+};

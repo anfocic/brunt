@@ -8,6 +8,7 @@ type Args = {
   provider: "claude-cli" | "anthropic";
   format: "text" | "json";
   failOn: "low" | "medium" | "high" | "critical";
+  vectors?: string[];
 };
 
 function parseArgs(argv: string[]): Args {
@@ -18,6 +19,7 @@ function parseArgs(argv: string[]): Args {
   let provider: Args["provider"] = "claude-cli";
   let format: Args["format"] = "text";
   let failOn: Args["failOn"] = "medium";
+  let vectors: string[] | undefined;
 
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
@@ -44,10 +46,13 @@ function parseArgs(argv: string[]): Args {
       }
       failOn = next as Args["failOn"];
       i++;
+    } else if (arg === "--vectors" && next) {
+      vectors = next.split(",").map((v) => v.trim());
+      i++;
     }
   }
 
-  return { command, diff, provider, format, failOn };
+  return { command, diff, provider, format, failOn, vectors };
 }
 
 function printHelp() {
@@ -62,23 +67,24 @@ OPTIONS
   --provider <name>     LLM provider: claude-cli, anthropic (default: claude-cli)
   --format <type>       Output format: text, json (default: text)
   --fail-on <severity>  Exit 1 at this severity: low, medium, high, critical (default: medium)
+  --vectors <list>      Comma-separated vectors to run (default: all)
 `);
 }
 
 async function main() {
-  const args = parseArgs(process.argv);
-
-  if (args.command === "help" || args.command === "--help" || args.command === "-h") {
-    printHelp();
-    process.exit(0);
-  }
-
-  if (args.command !== "scan") {
-    console.error(`Unknown command: ${args.command}. Run "vigil help" for usage.`);
-    process.exit(2);
-  }
-
   try {
+    const args = parseArgs(process.argv);
+
+    if (args.command === "help" || args.command === "--help" || args.command === "-h") {
+      printHelp();
+      process.exit(0);
+    }
+
+    if (args.command !== "scan") {
+      console.error(`Unknown command: ${args.command}. Run "vigil help" for usage.`);
+      process.exit(2);
+    }
+
     const exitCode = await run(args);
     process.exit(exitCode);
   } catch (err) {

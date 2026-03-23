@@ -1,7 +1,8 @@
 import type { Args } from "./cli.ts";
 import { getDiff } from "./diff.ts";
 import { loadContext } from "./context.ts";
-import { analyze } from "./vectors/correctness.ts";
+import { getVectors } from "./vectors/registry.ts";
+import type { VectorReport, ScanReport } from "./vectors/types.ts";
 import { generateTests, writeTests } from "./proof/test-gen.ts";
 import { formatText, formatJson, shouldFail } from "./reporter.ts";
 import { ClaudeCliProvider } from "./providers/claude-cli.ts";
@@ -21,6 +22,8 @@ function getProvider(name: string): Provider {
 
 export async function run(args: Args): Promise<number> {
   const provider = getProvider(args.provider);
+  const vectors = getVectors(args.vectors);
+  const scanStart = performance.now();
 
   console.log("Parsing diff...");
   const files = await getDiff(args.diff);
@@ -33,23 +36,42 @@ export async function run(args: Args): Promise<number> {
   console.log(`Analyzing ${files.length} file${files.length === 1 ? "" : "s"}...`);
   const context = await loadContext(files);
 
-  console.log(`Running correctness analysis via ${provider.name}...`);
-  const findings = await analyze(files, context, provider);
+  // Run vectors in parallel (like Probe's tokio::join!)
+  console.log(`Running ${vectors.length} vector${vectors.length === 1 ? "" : "s"} via ${provider.name}...`);
 
+  const vectorReports: VectorReport[] = await Promise.all(
+    vectors.map(async (vector) => {
+      const start = performance.now();
+      const findings = await vector.analyze(files, context, provider);
+      return {
+        name: vector.name,
+        findings,
+        duration: Math.round(performance.now() - start),
+      };
+    })
+  );
+
+  const report: ScanReport = {
+    vectors: vectorReports,
+    totalFindings: vectorReports.reduce((sum, v) => sum + v.findings.length, 0),
+    totalDuration: Math.round(performance.now() - scanStart),
+  };
+
+  const allFindings = vectorReports.flatMap((v) => v.findings);
   let tests: Awaited<ReturnType<typeof generateTests>> = [];
 
-  if (findings.length > 0) {
-    console.log(`Found ${findings.length} issue${findings.length === 1 ? "" : "s"}. Generating proof tests...`);
-    tests = await generateTests(findings, provider);
+  if (allFindings.length > 0) {
+    console.log(`Found ${report.totalFindings} issue${report.totalFindings === 1 ? "" : "s"}. Generating proof tests...`);
+    tests = await generateTests(allFindings, provider);
     await writeTests(tests);
   }
 
   const output =
     args.format === "json"
-      ? formatJson(findings, tests)
-      : formatText(findings, tests);
+      ? formatJson(report, tests)
+      : formatText(report, tests);
 
   console.log(output);
 
-  return shouldFail(findings, args.failOn) ? 1 : 0;
+  return shouldFail(allFindings, args.failOn) ? 1 : 0;
 }
