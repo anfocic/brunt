@@ -81,4 +81,22 @@ That's all I found.`;
     const raw = `I found several issues:\n\n[{"file":"x.ts","line":1,"severity":"high","title":"Bug","description":"Desc","reproduction":"Repro"}]`;
     expect(parseFindings(raw, "test").length).toBe(1);
   });
+
+  test("handles brackets in prose before JSON array", () => {
+    const raw = `I checked [all files] and [every function] carefully. Here are the findings:
+
+[{"file":"x.ts","line":1,"severity":"high","title":"Bug","description":"Desc","reproduction":"Repro"}]`;
+    const findings = parseFindings(raw, "test");
+    expect(findings.length).toBe(1);
+    expect(findings[0].file).toBe("x.ts");
+  });
+
+  test("picks last JSON array when multiple bracket pairs exist", () => {
+    const raw = `The array [1, 2, 3] shows the affected lines.
+
+[{"file":"a.ts","line":5,"severity":"low","title":"Issue","description":"D","reproduction":"R"}]`;
+    const findings = parseFindings(raw, "test");
+    expect(findings.length).toBe(1);
+    expect(findings[0].file).toBe("a.ts");
+  });
 });

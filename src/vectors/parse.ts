@@ -2,9 +2,33 @@ import type { Finding, Severity } from "./types.ts";
 
 const VALID_SEVERITIES: Set<string> = new Set(["low", "medium", "high", "critical"]);
 
+function extractJsonArray(raw: string): string | null {
+  // Find the last top-level JSON array in the response.
+  // Avoids the greedy regex problem where "[text] ... [json]" captures everything.
+  let depth = 0;
+  let lastStart = -1;
+  let lastEnd = -1;
+
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === "[" && depth === 0) {
+      lastStart = i;
+    }
+    if (raw[i] === "[") depth++;
+    if (raw[i] === "]") {
+      depth--;
+      if (depth === 0 && lastStart !== -1) {
+        lastEnd = i;
+      }
+    }
+  }
+
+  if (lastStart === -1 || lastEnd === -1) return null;
+  return raw.slice(lastStart, lastEnd + 1);
+}
+
 export function parseFindings(raw: string, vectorName: string): Finding[] {
-  const jsonMatch = raw.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) {
+  const jsonStr = extractJsonArray(raw);
+  if (!jsonStr) {
     if (raw.trim().length > 0) {
       console.error(`Warning: [${vectorName}] response did not contain JSON. Analysis may have failed.`);
     }
@@ -12,7 +36,7 @@ export function parseFindings(raw: string, vectorName: string): Finding[] {
   }
 
   try {
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonStr);
     if (!Array.isArray(parsed)) return [];
 
     return parsed.filter((f: unknown): f is Finding => {
