@@ -1,15 +1,9 @@
-import type { Vector } from "./types.ts";
-import { parseFindings } from "./parse.ts";
-import { buildDiffSection, buildContextSection, RESPONSE_FORMAT } from "./prompt.ts";
+import { createVector } from "./factory.ts";
 
-export const security: Vector = {
-  name: "security",
-  description: "Finds injection, auth bypass, data exposure, and other exploitable vulnerabilities",
-
-  async analyze(files, context, provider) {
-    if (files.length === 0) return [];
-
-    const prompt = `You are a security researcher performing an adversarial review of code changes. Your goal is to find exploitable vulnerabilities that a real attacker could use.
+export const security = createVector(
+  "security",
+  "Finds injection, auth bypass, data exposure, and other exploitable vulnerabilities",
+  `You are a security researcher performing an adversarial review of code changes. Your goal is to find exploitable vulnerabilities that a real attacker could use.
 
 Focus on:
 - SQL injection (string concatenation in queries, missing parameterization)
@@ -30,17 +24,5 @@ Do NOT report:
 - Dependency vulnerabilities (use a scanner for that)
 - Code quality or style issues
 
-For each finding, you MUST describe a specific attack scenario — not just "this could be vulnerable" but "an attacker sends X and gets Y."
-
-DIFF (lines starting with + are added, - are removed):
-${buildDiffSection(files)}
-
-FULL FILE CONTEXT:
-${buildContextSection(context)}
-
-${RESPONSE_FORMAT}`;
-
-    const response = await provider.query(prompt);
-    return parseFindings(response, "security");
-  },
-};
+For each finding, you MUST describe a specific attack scenario — not just "this could be vulnerable" but "an attacker sends X and gets Y."`
+);

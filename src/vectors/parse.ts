@@ -3,18 +3,36 @@ import type { Finding, Severity } from "./types.ts";
 const VALID_SEVERITIES: Set<string> = new Set(["low", "medium", "high", "critical"]);
 
 function extractJsonArray(raw: string): string | null {
-  // Find the last top-level JSON array in the response.
-  // Avoids the greedy regex problem where "[text] ... [json]" captures everything.
   let depth = 0;
   let lastStart = -1;
   let lastEnd = -1;
+  let inString = false;
+  let escaped = false;
 
   for (let i = 0; i < raw.length; i++) {
-    if (raw[i] === "[" && depth === 0) {
-      lastStart = i;
+    const ch = raw[i]!;
+
+    if (escaped) {
+      escaped = false;
+      continue;
     }
-    if (raw[i] === "[") depth++;
-    if (raw[i] === "]") {
+
+    if (ch === "\\" && inString) {
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"' && (depth > 0 || inString)) {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === "[") {
+      if (depth === 0) lastStart = i;
+      depth++;
+    } else if (ch === "]") {
       depth--;
       if (depth === 0 && lastStart !== -1) {
         lastEnd = i;

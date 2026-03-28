@@ -1,5 +1,6 @@
 import type { DiffFile } from "./diff.ts";
 import type { Finding } from "./vectors/types.ts";
+import type { Provider } from "./providers/types.ts";
 import { randomBytes } from "node:crypto";
 
 export type Canary = {
@@ -50,4 +51,29 @@ export function verifyCanary(findings: Finding[], canary: Canary): boolean {
   return findings.some(
     (f) => f.file === canary.file || f.title.includes(canary.keyword) || f.description.includes(canary.keyword)
   );
+}
+
+export async function verifyCanaryWithLlm(
+  canary: Canary,
+  findings: Finding[],
+  provider: Provider
+): Promise<boolean> {
+  const findingsSummary = findings
+    .map((f) => `- [${f.file}:${f.line}] ${f.title}`)
+    .join("\n");
+
+  const prompt = `You are a verification system. A synthetic canary bug was injected into a code review to test if the analysis is working correctly.
+
+The canary bug was:
+- File: ${canary.file}
+- Keyword: ${canary.keyword}
+- Line: ${canary.line}
+
+The following findings were reported by the analysis:
+${findingsSummary || "(no findings)"}
+
+Was the canary bug detected in the findings above? Answer ONLY "yes" or "no".`;
+
+  const response = await provider.query(prompt);
+  return response.trim().toLowerCase().startsWith("yes");
 }

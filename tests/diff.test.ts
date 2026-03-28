@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { getDiff } from "../src/diff.ts";
+import { getDiff, isSensitive } from "../src/diff.ts";
 import { spawnSync } from "child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
@@ -31,6 +31,40 @@ function withRepo(fn: (dir: string) => Promise<void>) {
     }
   };
 }
+
+describe("isSensitive", () => {
+  test("matches .env files", () => {
+    expect(isSensitive(".env")).toBe(true);
+    expect(isSensitive("src/.env")).toBe(true);
+    expect(isSensitive(".env.local")).toBe(true);
+    expect(isSensitive(".env.production")).toBe(true);
+  });
+
+  test("matches secret/credential/password files", () => {
+    expect(isSensitive("secrets.json")).toBe(true);
+    expect(isSensitive("my-credentials.yaml")).toBe(true);
+    expect(isSensitive("db-password.txt")).toBe(true);
+  });
+
+  test("matches key/cert files", () => {
+    expect(isSensitive("server.key")).toBe(true);
+    expect(isSensitive("cert.pem")).toBe(true);
+    expect(isSensitive("keystore.p12")).toBe(true);
+    expect(isSensitive("id_rsa")).toBe(true);
+    expect(isSensitive("id_rsa.pub")).toBe(true);
+  });
+
+  test("does not match normal files", () => {
+    expect(isSensitive("index.ts")).toBe(false);
+    expect(isSensitive("package.json")).toBe(false);
+    expect(isSensitive("README.md")).toBe(false);
+  });
+
+  test("matches extra patterns", () => {
+    expect(isSensitive("config.private", ["*.private"])).toBe(true);
+    expect(isSensitive("config.private")).toBe(false);
+  });
+});
 
 describe("getDiff", () => {
   test("parses added lines from a diff", withRepo(async (dir) => {
@@ -71,6 +105,49 @@ describe("getDiff", () => {
   test("returns empty array for no changes", withRepo(async () => {
     const files = await getDiff("--cached");
     expect(files).toEqual([]);
+  }));
+
+  test("filters sensitive files by default", withRepo(async (dir) => {
+    writeFileSync(join(dir, ".env"), "SECRET=abc\n");
+    writeFileSync(join(dir, ".env.local"), "SECRET=abc\n");
+    writeFileSync(join(dir, "secrets.json"), '{"key": "value"}\n');
+    writeFileSync(join(dir, "credentials.yaml"), "token: abc\n");
+    writeFileSync(join(dir, "server.key"), "private-key\n");
+    writeFileSync(join(dir, "cert.pem"), "certificate\n");
+    writeFileSync(join(dir, "real.ts"), "export const z = 3;\n");
+    spawnSync("git", ["add", "."], { cwd: dir });
+
+    const files = await getDiff("--cached");
+    const paths = files.map((f) => f.path);
+    expect(paths).toContain("real.ts");
+    expect(paths).not.toContain(".env");
+    expect(paths).not.toContain(".env.local");
+    expect(paths).not.toContain("secrets.json");
+    expect(paths).not.toContain("credentials.yaml");
+    expect(paths).not.toContain("server.key");
+    expect(paths).not.toContain("cert.pem");
+  }));
+
+  test("sensitive filtering can be disabled", withRepo(async (dir) => {
+    writeFileSync(join(dir, ".env"), "SECRET=abc\n");
+    writeFileSync(join(dir, "real.ts"), "export const z = 3;\n");
+    spawnSync("git", ["add", "."], { cwd: dir });
+
+    const files = await getDiff("--cached", { enabled: false });
+    const paths = files.map((f) => f.path);
+    expect(paths).toContain(".env");
+    expect(paths).toContain("real.ts");
+  }));
+
+  test("extra sensitive patterns from config", withRepo(async (dir) => {
+    writeFileSync(join(dir, "config.private"), "data\n");
+    writeFileSync(join(dir, "real.ts"), "export const z = 3;\n");
+    spawnSync("git", ["add", "."], { cwd: dir });
+
+    const files = await getDiff("--cached", { patterns: ["*.private"] });
+    const paths = files.map((f) => f.path);
+    expect(paths).toContain("real.ts");
+    expect(paths).not.toContain("config.private");
   }));
 
   test("infers language from extension", withRepo(async (dir) => {

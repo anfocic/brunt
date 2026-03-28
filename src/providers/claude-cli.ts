@@ -1,17 +1,29 @@
-import { execFile } from "node:child_process";
-import type { Provider } from "./types.ts";
+import { execFile, spawn } from "node:child_process";
+import type { Provider, ProviderOptions } from "./types.ts";
 
-const TIMEOUT_MS = 120_000; // 2 minutes
+const DEFAULT_TIMEOUT_MS = 300_000; // 5 minutes
 
 export class ClaudeCliProvider implements Provider {
   name = "claude-cli";
+  private model: string | undefined;
+  private timeout: number;
+
+  constructor(options: ProviderOptions = {}) {
+    this.model = options.model;
+    this.timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
+  }
 
   async query(prompt: string): Promise<string> {
+    const args = ["-p", prompt];
+    if (this.model) {
+      args.push("--model", this.model);
+    }
+
     return new Promise((resolve, reject) => {
-      execFile("claude", ["-p", prompt], { maxBuffer: 10 * 1024 * 1024, timeout: TIMEOUT_MS }, (error, stdout, stderr) => {
+      execFile("claude", args, { maxBuffer: 10 * 1024 * 1024, timeout: this.timeout }, (error, stdout, stderr) => {
         if (error) {
           if ("killed" in error && error.killed) {
-            reject(new Error(`claude-cli timed out after ${TIMEOUT_MS / 1000}s`));
+            reject(new Error(`claude-cli timed out after ${this.timeout / 1000}s`));
             return;
           }
           reject(new Error(`claude-cli failed: ${(stderr ?? "").trim() || error.message}`));
@@ -20,5 +32,23 @@ export class ClaudeCliProvider implements Provider {
         resolve((stdout ?? "").trim());
       });
     });
+  }
+
+  async *queryStream(prompt: string): AsyncIterable<string> {
+    const args = ["-p", prompt];
+    if (this.model) args.push("--model", this.model);
+
+    const child = spawn("claude", args, { stdio: ["pipe", "pipe", "pipe"] });
+    const timeout = setTimeout(() => child.kill(), this.timeout);
+
+    try {
+      if (child.stdout) {
+        for await (const chunk of child.stdout) {
+          yield chunk.toString();
+        }
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }

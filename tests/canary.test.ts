@@ -1,7 +1,8 @@
 import { describe, test, expect } from "bun:test";
-import { injectCanary, verifyCanary } from "../src/canary.ts";
+import { injectCanary, verifyCanary, verifyCanaryWithLlm } from "../src/canary.ts";
 import type { DiffFile } from "../src/diff.ts";
 import type { Finding } from "../src/vectors/types.ts";
+import type { Provider } from "../src/providers/types.ts";
 
 const makeDiffFile = (path: string, language: string): DiffFile => ({
   path,
@@ -71,5 +72,39 @@ describe("verifyCanary", () => {
   test("returns false for empty findings", () => {
     const canary = { file: "src/app.canary.ts", line: 1, keyword: "__check_abc123" };
     expect(verifyCanary([], canary)).toBe(false);
+  });
+});
+
+describe("verifyCanaryWithLlm", () => {
+  const canary = { file: "src/app.canary.ts", line: 1, keyword: "__check_abc123" };
+
+  function mockProvider(response: string): Provider {
+    return {
+      name: "mock",
+      query: async () => response,
+    };
+  }
+
+  test("returns true when LLM says yes", async () => {
+    const findings: Finding[] = [
+      { file: "src/app.canary.ts", line: 1, severity: "critical", title: "eval usage", description: "Uses eval", reproduction: "call it" },
+    ];
+    const result = await verifyCanaryWithLlm(canary, findings, mockProvider("yes"));
+    expect(result).toBe(true);
+  });
+
+  test("returns true for verbose yes response", async () => {
+    const result = await verifyCanaryWithLlm(canary, [], mockProvider("Yes, the canary was detected."));
+    expect(result).toBe(true);
+  });
+
+  test("returns false when LLM says no", async () => {
+    const result = await verifyCanaryWithLlm(canary, [], mockProvider("no"));
+    expect(result).toBe(false);
+  });
+
+  test("returns false for unexpected response", async () => {
+    const result = await verifyCanaryWithLlm(canary, [], mockProvider("I'm not sure"));
+    expect(result).toBe(false);
   });
 });

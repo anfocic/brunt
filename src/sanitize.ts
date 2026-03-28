@@ -1,17 +1,106 @@
 import type { DiffFile } from "./diff.ts";
 
+function isInsideString(line: string, index: number): boolean {
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  let escaped = false;
+
+  for (let i = 0; i < index; i++) {
+    const ch = line[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (ch === "'" && !inDouble && !inTemplate) inSingle = !inSingle;
+    else if (ch === '"' && !inSingle && !inTemplate) inDouble = !inDouble;
+    else if (ch === "`" && !inSingle && !inDouble) inTemplate = !inTemplate;
+  }
+
+  return inSingle || inDouble || inTemplate;
+}
+
+function findCommentStart(line: string, marker: string): number {
+  let pos = 0;
+  while (pos < line.length) {
+    const idx = line.indexOf(marker, pos);
+    if (idx === -1) return -1;
+    if (!isInsideString(line, idx)) return idx;
+    pos = idx + marker.length;
+  }
+  return -1;
+}
+
 function stripLineComments(line: string, language: string): string {
   if (["python", "ruby"].includes(language)) {
-    return line.replace(/#(?!!).*$/, "").trimEnd();
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === "#" && line[i + 1] !== "!" && !isInsideString(line, i)) {
+        return line.slice(0, i).trimEnd();
+      }
+    }
+    return line;
   }
-  // C-style single-line comments (JS, TS, Java, Go, Rust, C, C++, etc.)
-  // Naive: doesn't handle // inside strings. Good enough to strip injection attempts.
-  return line.replace(/\/\/.*$/, "").trimEnd();
+
+  const idx = findCommentStart(line, "//");
+  if (idx === -1) return line;
+  return line.slice(0, idx).trimEnd();
 }
 
 function stripBlockComments(text: string): string {
-  // Remove /* ... */ including multiline
-  return text.replace(/\/\*[\s\S]*?\*\//g, "");
+  let result = "";
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  let inBlock = false;
+  let escaped = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    const next = text[i + 1];
+
+    if (escaped) {
+      escaped = false;
+      if (!inBlock) result += ch;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escaped = true;
+      if (!inBlock) result += ch;
+      continue;
+    }
+
+    if (inBlock) {
+      if (ch === "*" && next === "/") {
+        inBlock = false;
+        i++;
+      }
+      continue;
+    }
+
+    const inString = inSingle || inDouble || inTemplate;
+
+    if (!inString && ch === "/" && next === "*") {
+      inBlock = true;
+      i++;
+      continue;
+    }
+
+    if (ch === "'" && !inDouble && !inTemplate) inSingle = !inSingle;
+    else if (ch === '"' && !inSingle && !inTemplate) inDouble = !inDouble;
+    else if (ch === "`" && !inSingle && !inDouble) inTemplate = !inTemplate;
+
+    result += ch;
+  }
+
+  return result.trimEnd();
 }
 
 function stripHtmlComments(text: string): string {
@@ -36,7 +125,14 @@ export function sanitizeDiff(files: DiffFile[]): DiffFile[] {
         return cleaned;
       }).filter((line) => line.trim().length > 0);
 
-      return { added: cleanAdded, removed: cleanRemoved, context: hunk.context };
+      const cleanContext = hunk.context.map((line) => {
+        let cleaned = stripLineComments(line, file.language);
+        cleaned = stripBlockComments(cleaned);
+        cleaned = stripHtmlComments(cleaned);
+        return cleaned;
+      }).filter((line) => line.trim().length > 0);
+
+      return { added: cleanAdded, removed: cleanRemoved, context: cleanContext };
     }),
   }));
 }

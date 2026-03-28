@@ -1,6 +1,8 @@
 import { readFile, access, mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { Finding } from "../vectors/types.ts";
 import type { Provider } from "../providers/types.ts";
+import { pMap, cleanLlmResponse } from "../util.ts";
 
 type TestFramework = {
   name: string;
@@ -84,52 +86,7 @@ Requirements:
 Respond with ONLY the test file content, no markdown fences, no explanation.`;
 }
 
-export function cleanLlmOutput(raw: string): string {
-  let text = raw;
-
-  text = text.replace(/^```[\w]*\n?/gm, "").replace(/\n?```$/gm, "");
-
-  const lines = text.split("\n");
-  const codeStart = lines.findIndex(
-    (l) => l.startsWith("import ") || l.startsWith("const ") ||
-           l.startsWith("describe(") || l.startsWith("test(") ||
-           l.startsWith("it(") || l.startsWith("from ") ||
-           l.startsWith("use ") || l.startsWith("#")
-  );
-
-  if (codeStart > 0) {
-    const preamble = lines.slice(0, codeStart).join("\n").trim();
-    const looksLikeChatter = !preamble.includes("import ") && !preamble.includes("require(");
-    if (looksLikeChatter) {
-      text = lines.slice(codeStart).join("\n");
-    }
-  }
-
-  const trimmedLines = text.split("\n");
-  let lastCodeLine = trimmedLines.length - 1;
-  for (let i = trimmedLines.length - 1; i >= 0; i--) {
-    const trimmed = trimmedLines[i]!.trim();
-    if (trimmed === "" || trimmed.startsWith("//")) continue;
-    if (trimmed.endsWith("}") || trimmed.endsWith(";") || trimmed.endsWith(")")) {
-      lastCodeLine = i;
-      break;
-    }
-    if (trimmed.match(/^[A-Z]/) && trimmed.includes(" ")) {
-      lastCodeLine = i - 1;
-    } else {
-      break;
-    }
-  }
-
-  text = trimmedLines.slice(0, lastCodeLine + 1).join("\n");
-  const result = text.trim() + "\n";
-
-  if (result.trim().length < 10) {
-    return "";
-  }
-
-  return result;
-}
+export { cleanLlmResponse as cleanLlmOutput } from "../util.ts";
 
 export type GeneratedTest = {
   finding: Finding;
@@ -137,41 +94,46 @@ export type GeneratedTest = {
   content: string;
 };
 
+
 export async function generateTests(
   findings: Finding[],
-  provider: Provider
+  provider: Provider,
+  concurrency = 3
 ): Promise<GeneratedTest[]> {
   const framework = await detectFramework();
-  const tests: GeneratedTest[] = [];
 
-  for (const finding of findings) {
-    const prompt = buildTestPrompt(finding, framework);
-    const content = await provider.query(prompt);
+  const results = await pMap(
+    findings,
+    async (finding) => {
+      const prompt = buildTestPrompt(finding, framework);
+      const content = await provider.query(prompt);
+      const cleaned = cleanLlmResponse(content);
 
-    const cleaned = cleanLlmOutput(content);
+      if (!cleaned) {
+        console.error(`Warning: failed to generate test for ${finding.file}:${finding.line}, skipping.`);
+        return null;
+      }
 
-    if (!cleaned) {
-      console.error(`Warning: failed to generate test for ${finding.file}:${finding.line}, skipping.`);
-      continue;
-    }
+      const safeName = finding.file
+        .replace(/[^a-zA-Z0-9]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
 
-    const safeName = finding.file
-      .replace(/[^a-zA-Z0-9]/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "");
+      const filePath = join(framework.dir, `${safeName}-L${finding.line}${framework.extension}`);
 
-    const filePath = `${framework.dir}/${safeName}-L${finding.line}${framework.extension}`;
+      return { finding, filePath, content: cleaned } as GeneratedTest;
+    },
+    concurrency
+  );
 
-    tests.push({ finding, filePath, content: cleaned });
-  }
-
-  return tests;
+  return results.filter((r): r is GeneratedTest => r !== null);
 }
+
+export { pMap } from "../util.ts";
 
 export async function writeTests(tests: GeneratedTest[]): Promise<void> {
   for (const test of tests) {
-    const dir = test.filePath.split("/").slice(0, -1).join("/");
-    await mkdir(dir, { recursive: true });
+    await mkdir(dirname(test.filePath), { recursive: true });
     await writeFile(test.filePath, test.content, "utf-8");
   }
 }

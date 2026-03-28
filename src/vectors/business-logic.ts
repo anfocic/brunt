@@ -1,15 +1,9 @@
-import type { Vector } from "./types.ts";
-import { parseFindings } from "./parse.ts";
-import { buildDiffSection, buildContextSection, RESPONSE_FORMAT } from "./prompt.ts";
+import { createVector } from "./factory.ts";
 
-export const businessLogic: Vector = {
-  name: "business-logic",
-  description: "Finds abuse scenarios, race conditions in workflows, and logic that can be exploited by users",
-
-  async analyze(files, context, provider) {
-    if (files.length === 0) return [];
-
-    const prompt = `You are a QA engineer who thinks like a malicious user. Your goal is to find ways that users can abuse the business logic — not technical vulnerabilities, but ways to cheat the system.
+export const businessLogic = createVector(
+  "business-logic",
+  "Finds abuse scenarios, race conditions in workflows, and logic that can be exploited by users",
+  `You are a QA engineer who thinks like a malicious user. Your goal is to find ways that users can abuse the business logic — not technical vulnerabilities, but ways to cheat the system.
 
 Focus on:
 - Race conditions in user-facing workflows (double-submit, concurrent requests that bypass checks)
@@ -30,17 +24,5 @@ Do NOT report:
 - Issues that require admin/internal access
 - Theoretical abuse that requires coordinated action from many accounts
 
-For each finding, describe the abuse scenario from the user's perspective: "a user does X, then Y, and gets Z which they shouldn't."
-
-DIFF (lines starting with + are added, - are removed):
-${buildDiffSection(files)}
-
-FULL FILE CONTEXT:
-${buildContextSection(context)}
-
-${RESPONSE_FORMAT}`;
-
-    const response = await provider.query(prompt);
-    return parseFindings(response, "business-logic");
-  },
-};
+For each finding, describe the abuse scenario from the user's perspective: "a user does X, then Y, and gets Z which they shouldn't."`
+);

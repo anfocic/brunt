@@ -32,6 +32,15 @@ describe("cli", () => {
     expect(stdout).toContain("brunt - adversarial AI code review");
   });
 
+  test("help includes new v0.2 options", () => {
+    const { stdout } = run("help");
+    expect(stdout).toContain("--model");
+    expect(stdout).toContain("--max-tokens");
+    expect(stdout).toContain("sarif");
+    expect(stdout).toContain("ollama");
+    expect(stdout).toContain("brunt.config.yaml");
+  });
+
   test("rejects unknown commands", () => {
     const { stderr, exitCode } = run("foobar");
     expect(exitCode).toBe(2);
@@ -54,5 +63,37 @@ describe("cli", () => {
     const { stderr, exitCode } = run("scan", "--fail-on", "extreme");
     expect(exitCode).toBe(2);
     expect(stderr).toContain("Unknown severity: extreme");
+  });
+
+  test("rejects invalid max-tokens", () => {
+    const { stderr, exitCode } = run("scan", "--max-tokens", "abc");
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("Invalid --max-tokens");
+  });
+
+  test("rejects negative max-tokens", () => {
+    const { stderr, exitCode } = run("scan", "--max-tokens", "-100");
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("Invalid --max-tokens");
+  });
+
+  test("accepts ollama as a valid provider in arg parsing", () => {
+    const { stderr } = run("scan", "--provider", "ollama");
+    // Arg parsing error includes "Use ..." help text; runner error does not
+    expect(stderr).not.toContain("Use ");
+  });
+
+  test("rejects unknown flags", () => {
+    const { stderr, exitCode } = run("scan", "--verbose");
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("Unknown flag: --verbose");
+  });
+
+  test("accepts sarif as a valid format in arg parsing", () => {
+    // Use --provider with unknown value to fail fast after arg parsing proves format is valid
+    // If format was rejected, we'd see "Unknown format" before reaching provider validation
+    const { stderr } = run("scan", "--format", "sarif", "--provider", "nonexistent");
+    expect(stderr).not.toContain("Unknown format");
+    expect(stderr).toContain("Unknown provider: nonexistent");
   });
 });
