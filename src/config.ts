@@ -91,13 +91,11 @@ function parseYaml(text: string): Record<string, unknown> {
   return result;
 }
 
-function castValue(raw: string): string | number | boolean {
+function castValue(raw: string): string | boolean {
   const trimmed = raw.trim();
   if (trimmed === "true") return true;
   if (trimmed === "false") return false;
-  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
-  if (/^\d+\.\d+$/.test(trimmed)) return parseFloat(trimmed);
-  return trimmed.replace(/^["']|["']$/g, "");
+  return trimmed.replace(/^(["'])(.+)\1$/, "$2");
 }
 
 function getGitRoot(): Promise<string | null> {
@@ -165,9 +163,13 @@ function mapToConfig(raw: Record<string, unknown>): BruntConfig {
   }
   if (typeof raw.diff === "string") config.diff = raw.diff;
   if (typeof raw.noTests === "boolean") config.noTests = raw.noTests;
-  if (typeof raw.maxTokens === "number") config.maxTokens = raw.maxTokens;
-  if (typeof raw.concurrency === "number") {
-    config.concurrency = Math.min(Math.max(raw.concurrency, 1), 20);
+  if (raw.maxTokens !== undefined) {
+    const n = parseInt(String(raw.maxTokens), 10);
+    if (!isNaN(n) && n > 0) config.maxTokens = n;
+  }
+  if (raw.concurrency !== undefined) {
+    const n = parseInt(String(raw.concurrency), 10);
+    if (!isNaN(n)) config.concurrency = Math.min(Math.max(n, 1), 20);
   }
 
   if (Array.isArray(raw.vectors)) {

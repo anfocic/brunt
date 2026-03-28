@@ -1,4 +1,5 @@
 import { readFile, access, mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { Finding } from "../vectors/types.ts";
 import type { Provider } from "../providers/types.ts";
 
@@ -184,7 +185,7 @@ export async function generateTests(
         .replace(/-+/g, "-")
         .replace(/^-|-$/g, "");
 
-      const filePath = `${framework.dir}/${safeName}-L${finding.line}${framework.extension}`;
+      const filePath = join(framework.dir, `${safeName}-L${finding.line}${framework.extension}`);
 
       return { finding, filePath, content: cleaned } as GeneratedTest;
     },
@@ -198,8 +199,7 @@ export { pMap };
 
 export async function writeTests(tests: GeneratedTest[]): Promise<void> {
   for (const test of tests) {
-    const dir = test.filePath.split("/").slice(0, -1).join("/");
-    await mkdir(dir, { recursive: true });
+    await mkdir(dirname(test.filePath), { recursive: true });
     await writeFile(test.filePath, test.content, "utf-8");
   }
 }

@@ -83,6 +83,12 @@ describe("cli", () => {
     expect(stderr).not.toContain("Use ");
   });
 
+  test("rejects unknown flags", () => {
+    const { stderr, exitCode } = run("scan", "--verbose");
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("Unknown flag: --verbose");
+  });
+
   test("accepts sarif as a valid format in arg parsing", () => {
     // Use --provider with unknown value to fail fast after arg parsing proves format is valid
     // If format was rejected, we'd see "Unknown format" before reaching provider validation

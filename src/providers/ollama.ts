@@ -46,8 +46,8 @@ export class OllamaProvider implements Provider {
       }
 
       return data.response;
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
         throw new Error(`Ollama timed out after ${TIMEOUT_MS / 1000}s`);
       }
       if (

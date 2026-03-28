@@ -1,15 +1,9 @@
-import type { Vector } from "./types.ts";
-import { parseFindings } from "./parse.ts";
-import { buildDiffSection, buildContextSection, RESPONSE_FORMAT } from "./prompt.ts";
+import { createVector } from "./factory.ts";
 
-export const resilience: Vector = {
-  name: "resilience",
-  description: "Finds missing error handling, unhandled promises, timeout gaps, and failure modes",
-
-  async analyze(files, context, provider) {
-    if (files.length === 0) return [];
-
-    const prompt = `You are a reliability engineer reviewing code changes. Your goal is to find failure modes — places where the code will break in production when things go wrong.
+export const resilience = createVector(
+  "resilience",
+  "Finds missing error handling, unhandled promises, timeout gaps, and failure modes",
+  `You are a reliability engineer reviewing code changes. Your goal is to find failure modes — places where the code will break in production when things go wrong.
 
 Focus on:
 - Unhandled promise rejections (async calls without catch, missing try/catch around await)
@@ -30,17 +24,5 @@ Do NOT report:
 - Logging style preferences
 - Test code error handling
 
-For each finding, describe the failure scenario: "when X fails/times out, Y happens (or doesn't happen)."
-
-DIFF (lines starting with + are added, - are removed):
-${buildDiffSection(files)}
-
-FULL FILE CONTEXT:
-${buildContextSection(context)}
-
-${RESPONSE_FORMAT}`;
-
-    const response = await provider.query(prompt);
-    return parseFindings(response, "resilience");
-  },
-};
+For each finding, describe the failure scenario: "when X fails/times out, Y happens (or doesn't happen)."`
+);

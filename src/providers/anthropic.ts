@@ -55,8 +55,8 @@ export class AnthropicProvider implements Provider {
       }
 
       return text;
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
         throw new Error(`Anthropic API timed out after ${TIMEOUT_MS / 1000}s`);
       }
       throw err;

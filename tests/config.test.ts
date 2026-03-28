@@ -12,10 +12,10 @@ describe("parseYaml", () => {
     expect(result.model).toBe("llama3");
   });
 
-  test("parses numbers", () => {
+  test("keeps numbers as strings (mapToConfig handles conversion)", () => {
     const result = parseYaml("maxTokens: 4096\nconcurrency: 3\n");
-    expect(result.maxTokens).toBe(4096);
-    expect(result.concurrency).toBe(3);
+    expect(result.maxTokens).toBe("4096");
+    expect(result.concurrency).toBe("3");
   });
 
   test("parses booleans", () => {
@@ -36,7 +36,7 @@ describe("parseYaml", () => {
 
   test("parses nested objects", () => {
     const result = parseYaml("sensitive:\n  enabled: true\n  threshold: 5\n");
-    expect(result.sensitive).toEqual({ enabled: true, threshold: 5 });
+    expect(result.sensitive).toEqual({ enabled: true, threshold: "5" });
   });
 
   test("ignores comments", () => {

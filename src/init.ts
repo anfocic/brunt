@@ -22,7 +22,7 @@ else
 fi
 
 echo "brunt: running pre-push scan..."
-$BRUNT scan --fail-on high --no-tests
+"$BRUNT" scan --fail-on high --no-tests
 
 EXIT_CODE=$?
 if [ $EXIT_CODE -ne 0 ]; then

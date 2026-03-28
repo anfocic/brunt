@@ -99,6 +99,8 @@ function parseArgs(argv: string[]): PartialArgs {
     } else if (arg === "--model" && next) {
       model = next;
       i++;
+    } else if (arg?.startsWith("--")) {
+      throw new Error(`Unknown flag: ${arg}. Run "brunt help" for usage.`);
     }
   }
 

@@ -1,15 +1,9 @@
-import type { Vector } from "./types.ts";
-import { parseFindings } from "./parse.ts";
-import { buildDiffSection, buildContextSection, RESPONSE_FORMAT } from "./prompt.ts";
+import { createVector } from "./factory.ts";
 
-export const performance: Vector = {
-  name: "performance",
-  description: "Finds N+1 queries, quadratic complexity, memory leaks, and unbounded operations",
-
-  async analyze(files, context, provider) {
-    if (files.length === 0) return [];
-
-    const prompt = `You are a performance engineer reviewing code changes. Your goal is to find performance bugs that will cause real problems at scale — not micro-optimizations.
+export const performance = createVector(
+  "performance",
+  "Finds N+1 queries, quadratic complexity, memory leaks, and unbounded operations",
+  `You are a performance engineer reviewing code changes. Your goal is to find performance bugs that will cause real problems at scale — not micro-optimizations.
 
 Focus on:
 - N+1 query patterns (database calls inside loops)
@@ -28,17 +22,5 @@ Do NOT report:
 - Style preferences about data structures
 - Issues that require >100k items to manifest (unless the code clearly handles large datasets)
 
-For each finding, explain the scaling behavior: "with N items, this does X operations" or "this grows linearly with Y."
-
-DIFF (lines starting with + are added, - are removed):
-${buildDiffSection(files)}
-
-FULL FILE CONTEXT:
-${buildContextSection(context)}
-
-${RESPONSE_FORMAT}`;
-
-    const response = await provider.query(prompt);
-    return parseFindings(response, "performance");
-  },
-};
+For each finding, explain the scaling behavior: "with N items, this does X operations" or "this grows linearly with Y."`
+);

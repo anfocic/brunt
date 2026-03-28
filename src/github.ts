@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import type { Finding, VectorReport } from "./vectors/types.ts";
 
 type ReviewComment = {
@@ -48,12 +49,18 @@ export async function postPrReview(
       "GITHUB_REPOSITORY is required (format: owner/repo). Set it as an environment variable."
     );
   }
+  if (!/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(repo)) {
+    throw new Error(`Invalid GITHUB_REPOSITORY format: "${repo}". Expected "owner/repo".`);
+  }
 
   const prNumber = process.env.BRUNT_PR_NUMBER ?? process.env.GITHUB_PR_NUMBER;
   if (!prNumber) {
     throw new Error(
       "PR number not found. Set BRUNT_PR_NUMBER or GITHUB_PR_NUMBER environment variable."
     );
+  }
+  if (!/^\d+$/.test(prNumber)) {
+    throw new Error(`Invalid PR number: "${prNumber}". Must be a positive integer.`);
   }
 
   const comments: ReviewComment[] = [];
@@ -102,7 +109,6 @@ export async function postPrReview(
 }
 
 export function getHeadSha(): Promise<string> {
-  const { execFile } = require("node:child_process") as typeof import("node:child_process");
   return new Promise((resolve, reject) => {
     execFile("git", ["rev-parse", "HEAD"], (error, stdout) => {
       if (error) {

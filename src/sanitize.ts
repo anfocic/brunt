@@ -4,11 +4,20 @@ function isInsideString(line: string, index: number): boolean {
   let inSingle = false;
   let inDouble = false;
   let inTemplate = false;
+  let escaped = false;
 
   for (let i = 0; i < index; i++) {
     const ch = line[i];
-    const prev = i > 0 ? line[i - 1] : "";
-    if (prev === "\\") continue;
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
 
     if (ch === "'" && !inDouble && !inTemplate) inSingle = !inSingle;
     else if (ch === '"' && !inSingle && !inTemplate) inDouble = !inDouble;
