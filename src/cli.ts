@@ -3,6 +3,7 @@
 import { run } from "./runner.ts";
 import { listVectors } from "./vectors/registry.ts";
 import { loadConfig, type BruntConfig } from "./config.ts";
+import { init } from "./init.ts";
 
 export type Args = {
   command: string;
@@ -12,6 +13,8 @@ export type Args = {
   failOn: "low" | "medium" | "high" | "critical";
   vectors?: string[];
   noTests: boolean;
+  noCache: boolean;
+  prComment: boolean;
   maxTokens?: number;
   model?: string;
   concurrency?: number;
@@ -27,6 +30,8 @@ type PartialArgs = {
   failOn?: "low" | "medium" | "high" | "critical";
   vectors?: string[];
   noTests?: boolean;
+  noCache?: boolean;
+  prComment?: boolean;
   maxTokens?: number;
   model?: string;
 };
@@ -45,6 +50,8 @@ function parseArgs(argv: string[]): PartialArgs {
   let failOn: PartialArgs["failOn"];
   let vectors: string[] | undefined;
   let noTests: boolean | undefined;
+  let noCache: boolean | undefined;
+  let prComment: boolean | undefined;
   let maxTokens: number | undefined;
   let model: string | undefined;
 
@@ -78,6 +85,10 @@ function parseArgs(argv: string[]): PartialArgs {
       i++;
     } else if (arg === "--no-tests") {
       noTests = true;
+    } else if (arg === "--no-cache") {
+      noCache = true;
+    } else if (arg === "--pr-comment") {
+      prComment = true;
     } else if (arg === "--max-tokens" && next) {
       const n = parseInt(next, 10);
       if (isNaN(n) || n <= 0) {
@@ -91,7 +102,7 @@ function parseArgs(argv: string[]): PartialArgs {
     }
   }
 
-  return { command, diff, provider, format, failOn, vectors, noTests, maxTokens, model };
+  return { command, diff, provider, format, failOn, vectors, noTests, noCache, prComment, maxTokens, model };
 }
 
 function mergeArgs(partial: PartialArgs, config: BruntConfig): Args {
@@ -103,6 +114,8 @@ function mergeArgs(partial: PartialArgs, config: BruntConfig): Args {
     failOn: (partial.failOn ?? config.failOn ?? "medium") as Args["failOn"],
     vectors: partial.vectors ?? config.vectors,
     noTests: partial.noTests ?? config.noTests ?? false,
+    noCache: partial.noCache ?? false,
+    prComment: partial.prComment ?? false,
     maxTokens: partial.maxTokens ?? config.maxTokens,
     model: partial.model ?? config.model,
     concurrency: config.concurrency,
@@ -117,10 +130,12 @@ brunt - adversarial AI code review
 
 USAGE
   brunt scan [options]
+  brunt init
   brunt list
 
 COMMANDS
   scan    Analyze a diff for bugs and vulnerabilities
+  init    Install git pre-push hook for automatic scanning
   list    Show available vectors
 
 OPTIONS
@@ -131,6 +146,8 @@ OPTIONS
   --fail-on <severity>  Exit 1 at this severity: low, medium, high, critical (default: medium)
   --vectors <list>      Comma-separated vectors to run (default: all)
   --no-tests            Skip proof test generation
+  --no-cache            Skip cache, force fresh LLM analysis
+  --pr-comment          Post findings as GitHub PR review comments
   --max-tokens <n>      Maximum tokens per LLM call
 
 CONFIG
@@ -154,6 +171,11 @@ async function main() {
 
     if (partial.command === "help" || partial.command === "--help" || partial.command === "-h") {
       printHelp();
+      process.exit(0);
+    }
+
+    if (partial.command === "init") {
+      await init();
       process.exit(0);
     }
 

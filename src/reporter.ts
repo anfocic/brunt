@@ -1,5 +1,14 @@
+import { createHash } from "node:crypto";
 import type { Finding, Severity, ScanReport } from "./vectors/types.ts";
 import type { GeneratedTest } from "./proof/test-gen.ts";
+
+function findingId(vectorName: string, f: Finding): string {
+  const hash = createHash("sha256")
+    .update(`${vectorName}:${f.file}:${f.line}:${f.title}`)
+    .digest("hex")
+    .slice(0, 12);
+  return `brunt/${vectorName}/${hash}`;
+}
 
 const SEVERITY_COLORS: Record<Severity, string> = {
   critical: "\x1b[31m",
@@ -82,9 +91,9 @@ export function formatSarif(report: ScanReport, tests: GeneratedTest[]): string 
     tool: {
       driver: {
         name: `brunt/${vector.name}`,
-        version: "0.2.0",
-        rules: vector.findings.map((f, i) => ({
-          id: `brunt/${vector.name}/${i}`,
+        version: "0.3.0",
+        rules: vector.findings.map((f) => ({
+          id: findingId(vector.name, f),
           shortDescription: { text: f.title },
           fullDescription: { text: f.description },
           defaultConfiguration: {
@@ -93,12 +102,12 @@ export function formatSarif(report: ScanReport, tests: GeneratedTest[]): string 
         })),
       },
     },
-    results: vector.findings.map((f, i) => {
+    results: vector.findings.map((f) => {
       const test = tests.find(
         (t) => t.finding.file === f.file && t.finding.line === f.line
       );
       return {
-        ruleId: `brunt/${vector.name}/${i}`,
+        ruleId: findingId(vector.name, f),
         level: sarifLevel(f.severity),
         message: {
           text: `${f.description}${f.reproduction ? `\n\nReproduction: ${f.reproduction}` : ""}${test ? `\nTest: ${test.filePath}` : ""}`,

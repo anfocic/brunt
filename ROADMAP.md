@@ -22,16 +22,17 @@
 - [x] Two-pass canary validation (second LLM call to verify)
 - [x] --model flag for provider model selection
 - [x] Config validation (provider, format, severity, concurrency bounds)
-- [x] Vector error isolation (Promise.allSettled -- one vector failure doesn't kill the scan)
+- [x] Vector error isolation (Promise.allSettled)
 - [x] 117 tests
 
-## v0.3
-- [ ] `brunt init` — set up git pre-push hook
-- [ ] Daemon/watch mode (`brunt watch`)
-- [ ] PR comment integration (post findings inline on GitHub PRs)
-- [ ] Caching (same diff = same findings, skip re-scan)
-- [ ] Custom vector plugins (load from brunt.config.yaml)
-- [ ] Vector-specific context hints (e.g., "this is a billing system" for business-logic)
+## v0.3 (done)
+- [x] Stable SARIF rule IDs (content hash instead of array index)
+- [x] String-aware comment stripping (no longer mangles URLs in strings)
+- [x] Scan caching (same diff = same findings, skip LLM calls)
+- [x] `brunt init` — install git pre-push hook
+- [x] PR comment integration (`--pr-comment` posts findings inline on GitHub PRs)
+- [x] --no-cache flag to force fresh analysis
+- [x] 140 tests
 
 ## v1.0
 - [ ] Compiled binaries (GitHub Releases, zero runtime dependency)
@@ -40,3 +41,6 @@
 - [ ] Monorepo support (scan only changed packages)
 - [ ] Baseline / ignore file (suppress known findings)
 - [ ] Metrics dashboard (findings over time)
+- [ ] Custom vector plugins (load from brunt.config.yaml)
+- [ ] Daemon/watch mode (`brunt watch`)
+- [ ] Vector-specific context hints (e.g., "this is a billing system")

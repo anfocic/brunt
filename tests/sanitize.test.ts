@@ -58,6 +58,48 @@ describe("sanitizeDiff", () => {
     expect(result[0].hunks[0].added).toEqual(lines);
   });
 
+  test("preserves URLs in strings", () => {
+    const result = sanitizeDiff(makeDiff([
+      'const url = "https://example.com/api";',
+    ]));
+    expect(result[0].hunks[0].added[0]).toBe('const url = "https://example.com/api";');
+  });
+
+  test("preserves // in template literals", () => {
+    const result = sanitizeDiff(makeDiff([
+      "const url = `https://example.com`;",
+    ]));
+    expect(result[0].hunks[0].added[0]).toBe("const url = `https://example.com`;");
+  });
+
+  test("preserves // in single-quoted strings", () => {
+    const result = sanitizeDiff(makeDiff([
+      "const proto = 'https://';",
+    ]));
+    expect(result[0].hunks[0].added[0]).toBe("const proto = 'https://';");
+  });
+
+  test("strips comment after string containing //", () => {
+    const result = sanitizeDiff(makeDiff([
+      'const url = "https://example.com"; // fetch this',
+    ]));
+    expect(result[0].hunks[0].added[0]).toBe('const url = "https://example.com";');
+  });
+
+  test("preserves Python strings with #", () => {
+    const result = sanitizeDiff(makeDiff([
+      'color = "#ff0000"',
+    ], "python"));
+    expect(result[0].hunks[0].added[0]).toBe('color = "#ff0000"');
+  });
+
+  test("strips Python comment after string with #", () => {
+    const result = sanitizeDiff(makeDiff([
+      'color = "#ff0000"  # red color',
+    ], "python"));
+    expect(result[0].hunks[0].added[0]).toBe('color = "#ff0000"');
+  });
+
   test("preserves context lines untouched", () => {
     const files: DiffFile[] = [{
       path: "test.ts",

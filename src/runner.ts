@@ -12,6 +12,8 @@ import { AnthropicProvider } from "./providers/anthropic.ts";
 import { OllamaProvider } from "./providers/ollama.ts";
 import type { Provider, ProviderOptions } from "./providers/types.ts";
 import { checkGitRepo, checkProvider } from "./preflight.ts";
+import { computeCacheKey, readCache, writeCache } from "./cache.ts";
+import { postPrReview, getHeadSha } from "./github.ts";
 
 function getProvider(name: string, options: ProviderOptions = {}): Provider {
   switch (name) {
@@ -50,56 +52,76 @@ export async function run(args: Args): Promise<number> {
 
   console.error(`Analyzing ${files.length} file${files.length === 1 ? "" : "s"}...`);
 
-  const sanitizedFiles = sanitizeDiff(files);
-  const { files: filesWithCanary, canary } = injectCanary(sanitizedFiles);
+  const vectorNames = vectors.map((v) => v.name);
+  const cacheKey = computeCacheKey(files, vectorNames, args.provider, args.model);
+  let vectorReports: VectorReport[];
+  let fromCache = false;
 
-  const context = await loadContext(files); // context uses original files (need real paths)
-
-  console.error(`Running ${vectors.length} vector${vectors.length === 1 ? "" : "s"} via ${provider.name}...`);
-
-  const settled = await Promise.allSettled(
-    vectors.map(async (vector) => {
-      const start = performance.now();
-      const findings = await vector.analyze(filesWithCanary, context, provider);
-      return {
-        name: vector.name,
-        findings,
-        duration: Math.round(performance.now() - start),
-      };
-    })
-  );
-
-  const vectorReports: VectorReport[] = [];
-  for (let i = 0; i < settled.length; i++) {
-    const result = settled[i]!;
-    if (result.status === "fulfilled") {
-      vectorReports.push(result.value);
-    } else {
-      console.error(`WARNING: Vector "${vectors[i]!.name}" failed: ${result.reason?.message ?? result.reason}`);
-      vectorReports.push({ name: vectors[i]!.name, findings: [], duration: 0 });
+  if (!args.noCache) {
+    const cached = await readCache(cacheKey);
+    if (cached) {
+      console.error("Cache hit — skipping LLM analysis.");
+      vectorReports = cached;
+      fromCache = true;
     }
   }
 
-  // Verify canary was detected — if not, analysis may have been compromised
-  const allRawFindings = vectorReports.flatMap((v) => v.findings);
-  const canaryFound = verifyCanary(allRawFindings, canary);
+  if (!fromCache) {
+    const sanitizedFiles = sanitizeDiff(files);
+    const { files: filesWithCanary, canary } = injectCanary(sanitizedFiles);
+    const context = await loadContext(files);
 
-  if (!canaryFound) {
-    console.error("WARNING: Canary bug was not detected. Analysis may have been compromised by prompt injection.");
-    console.error("         Results may be unreliable. Review the diff manually.");
-  } else {
-    const llmVerified = await verifyCanaryWithLlm(canary, allRawFindings, provider);
-    if (!llmVerified) {
-      console.error("WARNING: Canary two-pass verification failed. The canary match may be a false positive.");
-      console.error("         Results may be unreliable. Review the diff manually.");
-    }
-  }
+    console.error(`Running ${vectors.length} vector${vectors.length === 1 ? "" : "s"} via ${provider.name}...`);
 
-  // Strip canary findings from results — users shouldn't see them
-  for (const vr of vectorReports) {
-    vr.findings = vr.findings.filter(
-      (f) => f.file !== canary.file && !f.title.includes(canary.keyword) && !f.description.includes(canary.keyword)
+    const settled = await Promise.allSettled(
+      vectors.map(async (vector) => {
+        const start = performance.now();
+        const findings = await vector.analyze(filesWithCanary, context, provider);
+        return {
+          name: vector.name,
+          findings,
+          duration: Math.round(performance.now() - start),
+        };
+      })
     );
+
+    vectorReports = [];
+    for (let i = 0; i < settled.length; i++) {
+      const result = settled[i]!;
+      if (result.status === "fulfilled") {
+        vectorReports.push(result.value);
+      } else {
+        console.error(`WARNING: Vector "${vectors[i]!.name}" failed: ${result.reason?.message ?? result.reason}`);
+        vectorReports.push({ name: vectors[i]!.name, findings: [], duration: 0 });
+      }
+    }
+
+    // Verify canary was detected
+    const allRawFindings = vectorReports.flatMap((v) => v.findings);
+    const canaryFound = verifyCanary(allRawFindings, canary);
+
+    if (!canaryFound) {
+      console.error("WARNING: Canary bug was not detected. Analysis may have been compromised by prompt injection.");
+      console.error("         Results may be unreliable. Review the diff manually.");
+    } else {
+      const llmVerified = await verifyCanaryWithLlm(canary, allRawFindings, provider);
+      if (!llmVerified) {
+        console.error("WARNING: Canary two-pass verification failed. The canary match may be a false positive.");
+        console.error("         Results may be unreliable. Review the diff manually.");
+      }
+    }
+
+    // Strip canary findings from results
+    for (const vr of vectorReports) {
+      vr.findings = vr.findings.filter(
+        (f) => f.file !== canary.file && !f.title.includes(canary.keyword) && !f.description.includes(canary.keyword)
+      );
+    }
+
+    // Write to cache (after canary stripping so cache is clean)
+    if (!args.noCache) {
+      await writeCache(cacheKey, vectorReports);
+    }
   }
 
   const report: ScanReport = {
@@ -127,6 +149,15 @@ export async function run(args: Args): Promise<number> {
         : formatText(report, tests);
 
   process.stdout.write(output + "\n");
+
+  if (args.prComment) {
+    try {
+      const sha = await getHeadSha();
+      await postPrReview(report.vectors, sha);
+    } catch (err) {
+      console.error(`WARNING: Failed to post PR comment: ${err instanceof Error ? err.message : err}`);
+    }
+  }
 
   return shouldFail(allFindings, args.failOn) ? 1 : 0;
 }

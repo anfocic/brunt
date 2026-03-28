@@ -197,8 +197,33 @@ describe("formatSarif", () => {
     const parsed = JSON.parse(formatSarif(report, []));
 
     const rule = parsed.runs[0].tool.driver.rules[0];
-    expect(rule.id).toBe("brunt/correctness/0");
+    expect(rule.id).toStartWith("brunt/correctness/");
+    expect(rule.id.length).toBeGreaterThan("brunt/correctness/".length);
     expect(rule.shortDescription.text).toBe(findings[0].title);
     expect(rule.defaultConfiguration.level).toBe("error");
+  });
+
+  test("rule IDs are stable across runs", () => {
+    const findings = [makeFinding("high", "src/api.ts", 42)];
+    const report = makeReport(findings);
+    const parsed1 = JSON.parse(formatSarif(report, []));
+    const parsed2 = JSON.parse(formatSarif(report, []));
+
+    expect(parsed1.runs[0].results[0].ruleId).toBe(parsed2.runs[0].results[0].ruleId);
+    expect(parsed1.runs[0].tool.driver.rules[0].id).toBe(parsed2.runs[0].tool.driver.rules[0].id);
+  });
+
+  test("rule IDs differ for different findings", () => {
+    const report: ScanReport = {
+      vectors: [{
+        name: "test",
+        findings: [makeFinding("high", "a.ts", 1), makeFinding("high", "b.ts", 2)],
+        duration: 100,
+      }],
+      totalFindings: 2,
+      totalDuration: 100,
+    };
+    const parsed = JSON.parse(formatSarif(report, []));
+    expect(parsed.runs[0].results[0].ruleId).not.toBe(parsed.runs[0].results[1].ruleId);
   });
 });

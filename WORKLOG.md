@@ -1,5 +1,22 @@
 # Brunt Worklog
 
+## 2026-03-28 — v0.3 release (CI polish + bug fixes)
+
+### What was done
+- Fixed stable SARIF rule IDs -- content hash (sha256 of vector:file:line:title) replaces array index. No more duplicate alerts in GitHub Code Scanning across runs.
+- Fixed string-aware comment stripping -- `sanitize.ts` now tracks string literal state before stripping `//` or `#`. URLs like `https://example.com` and Python color codes like `#ff0000` are preserved.
+- Scan caching -- diff content + vectors + provider + model hashed to a cache key. Findings stored in `.brunt-cache/`. Same diff = skip all LLM calls. `--no-cache` to force fresh.
+- `brunt init` -- installs a git pre-push hook that runs `brunt scan --fail-on high --no-tests`. Detects brunt/npx/bunx. Appends to existing hooks. Idempotent.
+- PR comment integration -- `--pr-comment` posts a GitHub PR review with inline comments per finding. Uses `GITHUB_TOKEN`, `GITHUB_REPOSITORY`, and `BRUNT_PR_NUMBER` env vars. REQUEST_CHANGES if issues found, APPROVE if clean.
+
+### Stats
+- 140 tests, 0 failures, 57KB bundle
+- 5 new files, 7 modified files
+- Zero runtime dependencies maintained
+
+### What's next
+- See ROADMAP.md for v1.0 features
+
 ## 2026-03-28 — v0.2 release (modular + configurable)
 
 ### What was done
@@ -16,10 +33,6 @@
 - 117 tests, 0 failures, 48KB bundle
 - 3 new files, 12 modified files
 - Zero runtime dependencies maintained
-
-### What's next
-- See ROADMAP.md for v0.3 features
-- Remaining review items (low/medium): SARIF stable rule IDs, sanitize.ts string-aware comment stripping
 
 ## 2026-03-23 — Initial build (v0.1)
 
