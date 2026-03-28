@@ -2,7 +2,6 @@ import type { Args } from "./cli.ts";
 import { getDiff } from "./diff.ts";
 import { loadContext } from "./context.ts";
 import { sanitizeDiff } from "./sanitize.ts";
-import { injectCanary, verifyCanary, verifyCanaryWithLlm } from "./canary.ts";
 import { getVectors } from "./vectors/registry.ts";
 import type { VectorReport, ScanReport } from "./vectors/types.ts";
 import { generateTests, writeTests } from "./proof/test-gen.ts";
@@ -12,15 +11,16 @@ import { AnthropicProvider } from "./providers/anthropic.ts";
 import { OllamaProvider } from "./providers/ollama.ts";
 import type { Provider, ProviderOptions } from "./providers/types.ts";
 import { checkGitRepo, checkProvider } from "./preflight.ts";
-import { computeCacheKey, readCache, writeCache } from "./cache.ts";
 import { postPrReview, getHeadSha } from "./github.ts";
 import { fixAll, type FixVerification } from "./fix/fix-gen.ts";
 import { createFixPr } from "./fix/pr.ts";
 import { Spinner, ProgressBoard, printBanner } from "./tui.ts";
 import { runInteractive } from "./interactive.ts";
-import { buildConsensus, type ConsensusReport } from "./consensus.ts";
+import { buildConsensus } from "./consensus.ts";
+import { scanEngine } from "./engine.ts";
+import { readBaseline, filterByBaseline } from "./baseline.ts";
 
-function getProvider(name: string, options: ProviderOptions = {}): Provider {
+export function getProvider(name: string, options: ProviderOptions = {}): Provider {
   switch (name) {
     case "claude-cli":
       return new ClaudeCliProvider(options);
@@ -60,89 +60,78 @@ export async function run(args: Args): Promise<number> {
 
   spinner.succeed(`Parsed ${files.length} file${files.length === 1 ? "" : "s"}.`);
 
-  const vectorNames = vectors.map((v) => v.name);
-  const cacheKey = computeCacheKey(files, vectorNames, args.provider, args.model);
-  let vectorReports: VectorReport[];
-  let fromCache = false;
+  const board = new ProgressBoard(vectors.map((v) => v.name));
+  let boardStarted = false;
 
-  if (!args.noCache) {
-    const cached = await readCache(cacheKey);
-    if (cached) {
-      spinner.start("Cache hit — skipping LLM analysis.");
-      spinner.succeed("Cache hit — loaded previous results.");
-      vectorReports = cached;
-      fromCache = true;
-    }
-  }
-
-  if (!fromCache) {
-    const sanitizedFiles = sanitizeDiff(files);
-    const { files: filesWithCanary, canary } = injectCanary(sanitizedFiles);
-    const context = await loadContext(files);
-
-    const board = new ProgressBoard(vectors.map((v) => v.name));
-    process.stderr.write(`\n  Running ${vectors.length} vector${vectors.length === 1 ? "" : "s"} via ${provider.name}:\n\n`);
-    for (const v of vectors) {
-      board.update(v.name, "running");
-    }
-
-    const settled = await Promise.allSettled(
-      vectors.map(async (vector) => {
-        const start = performance.now();
-        const findings = await vector.analyze(filesWithCanary, context, provider);
-        const duration = Math.round(performance.now() - start);
-        const detail = `${findings.length} finding${findings.length === 1 ? "" : "s"}`;
-        board.update(vector.name, "done", detail, duration);
-        return { name: vector.name, findings, duration };
-      })
-    );
-
-    board.finish();
-
-    vectorReports = [];
-    for (let i = 0; i < settled.length; i++) {
-      const result = settled[i]!;
-      if (result.status === "fulfilled") {
-        vectorReports.push(result.value);
-      } else {
-        board.update(vectors[i]!.name, "failed", result.reason?.message ?? String(result.reason));
-        console.error(`WARNING: Vector "${vectors[i]!.name}" failed: ${result.reason?.message ?? result.reason}`);
-        vectorReports.push({ name: vectors[i]!.name, findings: [], duration: 0 });
+  const { vectorReports, fromCache } = await scanEngine(
+    {
+      files,
+      vectors,
+      provider,
+      noCache: args.noCache,
+      providerName: args.provider,
+      model: args.model,
+    },
+    (event, detail) => {
+      switch (event) {
+        case "cache-hit":
+          spinner.start("Cache hit — skipping LLM analysis.");
+          spinner.succeed("Cache hit — loaded previous results.");
+          break;
+        case "vectors-start":
+          process.stderr.write(`\n  Running ${detail} vector${detail === "1" ? "" : "s"} via ${provider.name}:\n\n`);
+          for (const v of vectors) board.update(v.name, "running");
+          boardStarted = true;
+          break;
+        case "vector-done": {
+          const [name, count, dur] = detail!.split(":");
+          board.update(name!, "done", `${count} finding${count === "1" ? "" : "s"}`, parseInt(dur!));
+          break;
+        }
+        case "vector-failed": {
+          const [name, msg] = detail!.split(":", 2);
+          board.update(name!, "failed", msg);
+          console.error(`WARNING: Vector "${name}" failed: ${msg}`);
+          break;
+        }
+        case "canary-missed":
+          console.error("WARNING: Canary bug was not detected. Analysis may have been compromised by prompt injection.");
+          console.error("         Results may be unreliable. Review the diff manually.");
+          break;
+        case "canary-failed":
+          console.error("WARNING: Canary two-pass verification failed. The canary match may be a false positive.");
+          console.error("         Results may be unreliable. Review the diff manually.");
+          break;
       }
     }
+  );
 
-    const allRawFindings = vectorReports.flatMap((v) => v.findings);
-    const canaryFound = verifyCanary(allRawFindings, canary);
+  if (boardStarted) board.finish();
 
-    if (!canaryFound) {
-      console.error("WARNING: Canary bug was not detected. Analysis may have been compromised by prompt injection.");
-      console.error("         Results may be unreliable. Review the diff manually.");
-    } else {
-      const llmVerified = await verifyCanaryWithLlm(canary, allRawFindings, provider);
-      if (!llmVerified) {
-        console.error("WARNING: Canary two-pass verification failed. The canary match may be a false positive.");
-        console.error("         Results may be unreliable. Review the diff manually.");
+  // Baseline filtering
+  let suppressed = 0;
+  let filteredReports = vectorReports;
+
+  if (!args.noBaseline) {
+    const baseline = await readBaseline();
+    if (baseline.length > 0) {
+      const result = filterByBaseline(vectorReports, baseline);
+      filteredReports = result.filtered;
+      suppressed = result.suppressed;
+      if (suppressed > 0) {
+        const s = new Spinner("");
+        s.succeed(`${suppressed} baseline issue${suppressed === 1 ? "" : "s"} suppressed.`);
       }
-    }
-
-    for (const vr of vectorReports) {
-      vr.findings = vr.findings.filter(
-        (f) => f.file !== canary.file && !f.title.includes(canary.keyword) && !f.description.includes(canary.keyword)
-      );
-    }
-
-    if (!args.noCache) {
-      await writeCache(cacheKey, vectorReports);
     }
   }
 
   const report: ScanReport = {
-    vectors: vectorReports,
-    totalFindings: vectorReports.reduce((sum, v) => sum + v.findings.length, 0),
+    vectors: filteredReports,
+    totalFindings: filteredReports.reduce((sum, v) => sum + v.findings.length, 0),
     totalDuration: Math.round(performance.now() - scanStart),
   };
 
-  const allFindings = vectorReports.flatMap((v) => v.findings);
+  const allFindings = filteredReports.flatMap((v) => v.findings);
   let tests: Awaited<ReturnType<typeof generateTests>> = [];
   let fixes: FixVerification[] = [];
 
@@ -153,8 +142,8 @@ export async function run(args: Args): Promise<number> {
     await writeTests(tests);
     testSpinner.succeed(`Generated ${tests.length} proof test${tests.length === 1 ? "" : "s"}.`);
   } else if (allFindings.length > 0) {
-    const noIssueSpinner = new Spinner("");
-    noIssueSpinner.succeed(`Found ${report.totalFindings} issue${report.totalFindings === 1 ? "" : "s"}.`);
+    const s = new Spinner("");
+    s.succeed(`Found ${report.totalFindings} issue${report.totalFindings === 1 ? "" : "s"}.`);
   }
 
   if (args.fix && args.noTests) {

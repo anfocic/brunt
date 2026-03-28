@@ -8,7 +8,7 @@ import { findingKey } from "./util.ts";
 
 export const VERSION = "0.4.0";
 
-function findingId(vectorName: string, f: Finding): string {
+export function findingId(vectorName: string, f: Finding): string {
   const hash = createHash("sha256")
     .update(`${vectorName}:${f.file}:${f.line}:${f.title}`)
     .digest("hex")

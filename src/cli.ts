@@ -5,6 +5,12 @@ import { listVectors } from "./vectors/registry.ts";
 import { loadConfig, type BruntConfig } from "./config.ts";
 import { init } from "./init.ts";
 import { runDemo } from "./demo.ts";
+import { readBaseline, writeBaseline, buildBaselineEntries, clearBaseline } from "./baseline.ts";
+import { scanEngine } from "./engine.ts";
+import { getProvider } from "./runner.ts";
+import { getVectors } from "./vectors/registry.ts";
+import { getDiff } from "./diff.ts";
+import { BOLD, RESET, DIM, CYAN } from "./colors.ts";
 
 export type Args = {
   command: string;
@@ -27,6 +33,7 @@ export type Args = {
   pr: boolean;
   consensus: boolean;
   consensusProviders?: string[];
+  noBaseline: boolean;
 };
 
 type PartialArgs = {
@@ -47,6 +54,7 @@ type PartialArgs = {
   pr?: boolean;
   consensus?: boolean;
   consensusProviders?: string[];
+  noBaseline?: boolean;
 };
 
 function detectDefaultDiff(): string {
@@ -79,6 +87,7 @@ function parseArgs(argv: string[]): PartialArgs {
   let pr: boolean | undefined;
   let consensus: boolean | undefined;
   let consensusProviders: string[] | undefined;
+  let noBaseline: boolean | undefined;
 
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
@@ -126,6 +135,8 @@ function parseArgs(argv: string[]): PartialArgs {
       i++;
     } else if (arg === "--interactive") {
       interactive = true;
+    } else if (arg === "--no-baseline") {
+      noBaseline = true;
     } else if (arg === "--pr") {
       pr = true;
     } else if (arg === "--consensus") {
@@ -152,7 +163,7 @@ function parseArgs(argv: string[]): PartialArgs {
     }
   }
 
-  return { command, diff, provider, format, failOn, vectors, noTests, noCache, prComment, maxTokens, model, fix, fixRetries, interactive, pr, consensus, consensusProviders };
+  return { command, diff, provider, format, failOn, vectors, noTests, noCache, prComment, maxTokens, model, fix, fixRetries, interactive, pr, consensus, consensusProviders, noBaseline };
 }
 
 function mergeArgs(partial: PartialArgs, config: BruntConfig): Args {
@@ -177,6 +188,7 @@ function mergeArgs(partial: PartialArgs, config: BruntConfig): Args {
     pr: partial.pr ?? false,
     consensus: partial.consensus ?? false,
     consensusProviders: partial.consensusProviders,
+    noBaseline: partial.noBaseline ?? false,
   };
 }
 
@@ -186,15 +198,17 @@ brunt - adversarial AI code review
 
 USAGE
   brunt scan [options]
+  brunt baseline <init|update|show|clear>
   brunt demo [--provider <name>]
   brunt init
   brunt list
 
 COMMANDS
-  scan    Analyze a diff for bugs and vulnerabilities
-  demo    Run a showcase scan against a built-in buggy file
-  init    Install git pre-push hook for automatic scanning
-  list    Show available vectors
+  scan       Analyze a diff for bugs and vulnerabilities
+  baseline   Manage baseline of known/accepted findings
+  demo       Run a showcase scan against a built-in buggy file
+  init       Install git pre-push hook for automatic scanning
+  list       Show available vectors
 
 OPTIONS
   --diff <range>        Git diff range (default: HEAD~1)
@@ -211,6 +225,7 @@ OPTIONS
   --fix-retries <n>     Max fix attempts per finding (default: 2, max: 5)
   --interactive         Enter interactive triage mode after scan
   --pr                  Create a PR with verified fixes (requires --fix)
+  --no-baseline         Skip baseline filtering, report all findings
   --consensus           Run scan across multiple models for agreement
   --consensus-providers Comma-separated providers for consensus mode
 
@@ -227,6 +242,77 @@ function printList() {
     console.log(`  ${v.name.padEnd(16)} ${v.description}`);
   }
   console.log(`\nUse --vectors to select: brunt scan --vectors ${vectors.map((v) => v.name).join(",")}\n`);
+}
+
+async function handleBaseline(subArgs: string[], partial: PartialArgs) {
+  const sub = subArgs[0];
+
+  if (sub === "show") {
+    const entries = await readBaseline();
+    if (entries.length === 0) {
+      console.log("No baseline found. Run `brunt baseline init` to create one.");
+      return;
+    }
+    console.log(`\n${BOLD}Baseline${RESET} — ${entries.length} finding${entries.length === 1 ? "" : "s"}\n`);
+    for (const e of entries) {
+      console.log(`  ${DIM}${e.id}${RESET}  ${e.severity.toUpperCase().padEnd(8)} ${e.file}:${e.line}  ${e.title}`);
+    }
+    console.log();
+    return;
+  }
+
+  if (sub === "clear") {
+    const removed = await clearBaseline();
+    console.log(removed ? "Baseline cleared." : "No baseline file found.");
+    return;
+  }
+
+  if (sub === "init" || sub === "update") {
+    const config = await loadConfig();
+    const args = mergeArgs({ ...partial, command: "scan" }, config);
+
+    const provider = getProvider(args.provider, { maxTokens: args.maxTokens, model: args.model });
+    const vectors = getVectors(args.vectors);
+    const files = await getDiff(args.diff, {
+      enabled: args.sensitiveEnabled,
+      patterns: args.sensitivePatterns,
+    });
+
+    if (files.length === 0) {
+      console.log("No code changes found in diff.");
+      return;
+    }
+
+    console.error(`Scanning ${files.length} file${files.length === 1 ? "" : "s"}...`);
+
+    const { vectorReports } = await scanEngine(
+      { files, vectors, provider, noCache: true, providerName: args.provider, model: args.model },
+      (event, detail) => {
+        if (event === "vector-done") {
+          const [name, count, dur] = detail!.split(":");
+          console.error(`  ${name}: ${count} finding${count === "1" ? "" : "s"} (${dur}ms)`);
+        }
+      }
+    );
+
+    const newEntries = buildBaselineEntries(vectorReports);
+
+    if (sub === "init") {
+      await writeBaseline(newEntries);
+      console.log(`Baseline initialized with ${newEntries.length} finding${newEntries.length === 1 ? "" : "s"}.`);
+    } else {
+      const existing = await readBaseline();
+      const existingIds = new Set(existing.map((e) => e.id));
+      const added = newEntries.filter((e) => !existingIds.has(e.id));
+      const merged = [...existing, ...added];
+      await writeBaseline(merged);
+      console.log(`Added ${added.length} new finding${added.length === 1 ? "" : "s"} to baseline (${merged.length} total).`);
+    }
+    return;
+  }
+
+  console.error(`Unknown baseline subcommand: ${sub ?? "(none)"}. Use: init, update, show, clear`);
+  process.exit(2);
 }
 
 async function main() {
@@ -252,6 +338,11 @@ async function main() {
       const provider = partial.provider ?? "claude-cli";
       const exitCode = await runDemo(provider, partial.model);
       process.exit(exitCode);
+    }
+
+    if (partial.command === "baseline") {
+      await handleBaseline(process.argv.slice(3), partial);
+      process.exit(0);
     }
 
     if (partial.command !== "scan") {

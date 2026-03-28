@@ -77,13 +77,13 @@ function matchGlob(pattern: string, filename: string): boolean {
   }
 }
 
-function isSensitive(path: string, extraPatterns?: string[]): boolean {
+export function isSensitive(path: string, extraPatterns?: string[]): boolean {
   const filename = path.split("/").pop() ?? "";
   const patterns = [...SENSITIVE_PATTERNS, ...(extraPatterns ?? [])];
   return patterns.some((p) => matchGlob(p, filename));
 }
 
-function parseDiff(raw: string): DiffFile[] {
+export function parseDiff(raw: string): DiffFile[] {
   const files: DiffFile[] = [];
   const fileChunks = raw.split(/^diff --git /m).filter(Boolean);
 
@@ -163,4 +163,3 @@ export async function getDiff(
   });
 }
 
-export { parseDiff, isSensitive };

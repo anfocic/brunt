@@ -27,6 +27,21 @@ export function findingKey(f: Finding): string {
   return `${f.file}:${f.line}`;
 }
 
+export function tokenize(text: string): Set<string> {
+  return new Set(
+    text.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(Boolean)
+  );
+}
+
+export function jaccard(a: Set<string>, b: Set<string>): number {
+  let intersection = 0;
+  for (const item of a) {
+    if (b.has(item)) intersection++;
+  }
+  const union = a.size + b.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
 const CODE_STARTERS = [
   "import ", "const ", "let ", "var ", "function ", "class ", "export ",
   "describe(", "test(", "it(", "from ", "use ", "#", "pub ", "def ",

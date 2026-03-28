@@ -87,6 +87,7 @@ export async function runDemo(provider: string, model?: string): Promise<number>
         interactive: false,
         pr: false,
         consensus: false,
+        noBaseline: true,
         model,
       };
 

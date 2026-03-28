@@ -1,4 +1,5 @@
 import type { Finding, VectorReport } from "./vectors/types.ts";
+import { tokenize, jaccard } from "./util.ts";
 
 export type ConsensusResult = {
   finding: Finding;
@@ -12,21 +13,6 @@ export type ConsensusReport = {
   models: string[];
   agreement: number;
 };
-
-function tokenize(text: string): Set<string> {
-  return new Set(
-    text.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(Boolean)
-  );
-}
-
-function jaccard(a: Set<string>, b: Set<string>): number {
-  let intersection = 0;
-  for (const item of a) {
-    if (b.has(item)) intersection++;
-  }
-  const union = a.size + b.size - intersection;
-  return union === 0 ? 0 : intersection / union;
-}
 
 export function matchFindings(a: Finding, b: Finding): boolean {
   if (a.file !== b.file) return false;
