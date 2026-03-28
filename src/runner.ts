@@ -2,22 +2,25 @@ import type { Args } from "./cli.ts";
 import { getDiff } from "./diff.ts";
 import { loadContext } from "./context.ts";
 import { sanitizeDiff } from "./sanitize.ts";
-import { injectCanary, verifyCanary } from "./canary.ts";
+import { injectCanary, verifyCanary, verifyCanaryWithLlm } from "./canary.ts";
 import { getVectors } from "./vectors/registry.ts";
 import type { VectorReport, ScanReport } from "./vectors/types.ts";
 import { generateTests, writeTests } from "./proof/test-gen.ts";
-import { formatText, formatJson, shouldFail } from "./reporter.ts";
+import { formatText, formatJson, formatSarif, shouldFail } from "./reporter.ts";
 import { ClaudeCliProvider } from "./providers/claude-cli.ts";
 import { AnthropicProvider } from "./providers/anthropic.ts";
-import type { Provider } from "./providers/types.ts";
+import { OllamaProvider } from "./providers/ollama.ts";
+import type { Provider, ProviderOptions } from "./providers/types.ts";
 import { checkGitRepo, checkProvider } from "./preflight.ts";
 
-function getProvider(name: string): Provider {
+function getProvider(name: string, options: ProviderOptions = {}): Provider {
   switch (name) {
     case "claude-cli":
-      return new ClaudeCliProvider();
+      return new ClaudeCliProvider(options);
     case "anthropic":
-      return new AnthropicProvider();
+      return new AnthropicProvider(options);
+    case "ollama":
+      return new OllamaProvider(options);
     default:
       throw new Error(`Unknown provider: ${name}`);
   }
@@ -25,14 +28,20 @@ function getProvider(name: string): Provider {
 
 export async function run(args: Args): Promise<number> {
   await checkGitRepo();
-  await checkProvider(args.provider);
+  await checkProvider(args.provider, args.model);
 
-  const provider = getProvider(args.provider);
+  const provider = getProvider(args.provider, {
+    maxTokens: args.maxTokens,
+    model: args.model,
+  });
   const vectors = getVectors(args.vectors);
   const scanStart = performance.now();
 
   console.error("Parsing diff...");
-  const files = await getDiff(args.diff);
+  const files = await getDiff(args.diff, {
+    enabled: args.sensitiveEnabled,
+    patterns: args.sensitivePatterns,
+  });
 
   if (files.length === 0) {
     console.error("No code changes found in diff.");
@@ -48,7 +57,7 @@ export async function run(args: Args): Promise<number> {
 
   console.error(`Running ${vectors.length} vector${vectors.length === 1 ? "" : "s"} via ${provider.name}...`);
 
-  const vectorReports: VectorReport[] = await Promise.all(
+  const settled = await Promise.allSettled(
     vectors.map(async (vector) => {
       const start = performance.now();
       const findings = await vector.analyze(filesWithCanary, context, provider);
@@ -60,6 +69,17 @@ export async function run(args: Args): Promise<number> {
     })
   );
 
+  const vectorReports: VectorReport[] = [];
+  for (let i = 0; i < settled.length; i++) {
+    const result = settled[i]!;
+    if (result.status === "fulfilled") {
+      vectorReports.push(result.value);
+    } else {
+      console.error(`WARNING: Vector "${vectors[i]!.name}" failed: ${result.reason?.message ?? result.reason}`);
+      vectorReports.push({ name: vectors[i]!.name, findings: [], duration: 0 });
+    }
+  }
+
   // Verify canary was detected — if not, analysis may have been compromised
   const allRawFindings = vectorReports.flatMap((v) => v.findings);
   const canaryFound = verifyCanary(allRawFindings, canary);
@@ -67,6 +87,12 @@ export async function run(args: Args): Promise<number> {
   if (!canaryFound) {
     console.error("WARNING: Canary bug was not detected. Analysis may have been compromised by prompt injection.");
     console.error("         Results may be unreliable. Review the diff manually.");
+  } else {
+    const llmVerified = await verifyCanaryWithLlm(canary, allRawFindings, provider);
+    if (!llmVerified) {
+      console.error("WARNING: Canary two-pass verification failed. The canary match may be a false positive.");
+      console.error("         Results may be unreliable. Review the diff manually.");
+    }
   }
 
   // Strip canary findings from results — users shouldn't see them
@@ -87,7 +113,7 @@ export async function run(args: Args): Promise<number> {
 
   if (allFindings.length > 0 && !args.noTests) {
     console.error(`Found ${report.totalFindings} issue${report.totalFindings === 1 ? "" : "s"}. Generating proof tests...`);
-    tests = await generateTests(allFindings, provider);
+    tests = await generateTests(allFindings, provider, args.concurrency ?? 3);
     await writeTests(tests);
   } else if (allFindings.length > 0) {
     console.error(`Found ${report.totalFindings} issue${report.totalFindings === 1 ? "" : "s"}.`);
@@ -96,7 +122,9 @@ export async function run(args: Args): Promise<number> {
   const output =
     args.format === "json"
       ? formatJson(report, tests)
-      : formatText(report, tests);
+      : args.format === "sarif"
+        ? formatSarif(report, tests)
+        : formatText(report, tests);
 
   process.stdout.write(output + "\n");
 

@@ -53,6 +53,36 @@ function shouldIgnore(path: string): boolean {
   return IGNORED_EXTENSIONS.has(ext);
 }
 
+const SENSITIVE_PATTERNS = [
+  ".env",
+  ".env.*",
+  "*secret*",
+  "*credential*",
+  "*password*",
+  "*.pem",
+  "*.key",
+  "*.p12",
+  "id_rsa*",
+  "*.keystore",
+];
+
+function matchGlob(pattern: string, filename: string): boolean {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*");
+  try {
+    return new RegExp("^" + escaped + "$", "i").test(filename);
+  } catch {
+    return false;
+  }
+}
+
+function isSensitive(path: string, extraPatterns?: string[]): boolean {
+  const filename = path.split("/").pop() ?? "";
+  const patterns = [...SENSITIVE_PATTERNS, ...(extraPatterns ?? [])];
+  return patterns.some((p) => matchGlob(p, filename));
+}
+
 function parseDiff(raw: string): DiffFile[] {
   const files: DiffFile[] = [];
   const fileChunks = raw.split(/^diff --git /m).filter(Boolean);
@@ -99,7 +129,15 @@ function spawn(cmd: string, args: string[]): Promise<{ stdout: string; stderr: s
   });
 }
 
-export async function getDiff(range: string): Promise<DiffFile[]> {
+export type SensitiveOptions = {
+  enabled?: boolean;
+  patterns?: string[];
+};
+
+export async function getDiff(
+  range: string,
+  sensitive?: SensitiveOptions
+): Promise<DiffFile[]> {
   const { stdout, stderr, exitCode } = await spawn("git", ["diff", range]);
 
   if (exitCode !== 0) {
@@ -110,5 +148,19 @@ export async function getDiff(range: string): Promise<DiffFile[]> {
     return [];
   }
 
-  return parseDiff(stdout);
+  const files = parseDiff(stdout);
+
+  if (sensitive?.enabled === false) {
+    return files;
+  }
+
+  return files.filter((f) => {
+    if (isSensitive(f.path, sensitive?.patterns)) {
+      console.error(`Excluding sensitive file: ${f.path}`);
+      return false;
+    }
+    return true;
+  });
 }
+
+export { parseDiff, isSensitive };

@@ -1,14 +1,24 @@
 import { execFile } from "node:child_process";
-import type { Provider } from "./types.ts";
+import type { Provider, ProviderOptions } from "./types.ts";
 
 const TIMEOUT_MS = 120_000; // 2 minutes
 
 export class ClaudeCliProvider implements Provider {
   name = "claude-cli";
+  private model: string | undefined;
+
+  constructor(options: ProviderOptions = {}) {
+    this.model = options.model;
+  }
 
   async query(prompt: string): Promise<string> {
+    const args = ["-p", prompt];
+    if (this.model) {
+      args.push("--model", this.model);
+    }
+
     return new Promise((resolve, reject) => {
-      execFile("claude", ["-p", prompt], { maxBuffer: 10 * 1024 * 1024, timeout: TIMEOUT_MS }, (error, stdout, stderr) => {
+      execFile("claude", args, { maxBuffer: 10 * 1024 * 1024, timeout: TIMEOUT_MS }, (error, stdout, stderr) => {
         if (error) {
           if ("killed" in error && error.killed) {
             reject(new Error(`claude-cli timed out after ${TIMEOUT_MS / 1000}s`));

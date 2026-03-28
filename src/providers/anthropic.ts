@@ -1,19 +1,23 @@
-import type { Provider } from "./types.ts";
+import type { Provider, ProviderOptions } from "./types.ts";
 
 const TIMEOUT_MS = 120_000; // 2 minutes
+const DEFAULT_MODEL = "claude-sonnet-4-6-20250514";
+const DEFAULT_MAX_TOKENS = 4096;
 
 export class AnthropicProvider implements Provider {
   name = "anthropic";
   private apiKey: string;
   private model: string;
+  private maxTokens: number;
 
-  constructor(model = "claude-sonnet-4-6-20250514") {
+  constructor(options: ProviderOptions = {}) {
     const key = process.env.ANTHROPIC_API_KEY;
     if (!key) {
       throw new Error("ANTHROPIC_API_KEY environment variable is required for the anthropic provider.");
     }
     this.apiKey = key;
-    this.model = model;
+    this.model = options.model ?? DEFAULT_MODEL;
+    this.maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
   }
 
   async query(prompt: string): Promise<string> {
@@ -30,7 +34,7 @@ export class AnthropicProvider implements Provider {
         },
         body: JSON.stringify({
           model: this.model,
-          max_tokens: 4096,
+          max_tokens: this.maxTokens,
           messages: [{ role: "user", content: prompt }],
         }),
         signal: controller.signal,

@@ -65,6 +65,73 @@ export function formatText(report: ScanReport, tests: GeneratedTest[]): string {
   return out;
 }
 
+function sarifLevel(severity: Severity): "error" | "warning" | "note" {
+  switch (severity) {
+    case "critical":
+    case "high":
+      return "error";
+    case "medium":
+      return "warning";
+    case "low":
+      return "note";
+  }
+}
+
+export function formatSarif(report: ScanReport, tests: GeneratedTest[]): string {
+  const runs = report.vectors.map((vector) => ({
+    tool: {
+      driver: {
+        name: `brunt/${vector.name}`,
+        version: "0.2.0",
+        rules: vector.findings.map((f, i) => ({
+          id: `brunt/${vector.name}/${i}`,
+          shortDescription: { text: f.title },
+          fullDescription: { text: f.description },
+          defaultConfiguration: {
+            level: sarifLevel(f.severity),
+          },
+        })),
+      },
+    },
+    results: vector.findings.map((f, i) => {
+      const test = tests.find(
+        (t) => t.finding.file === f.file && t.finding.line === f.line
+      );
+      return {
+        ruleId: `brunt/${vector.name}/${i}`,
+        level: sarifLevel(f.severity),
+        message: {
+          text: `${f.description}${f.reproduction ? `\n\nReproduction: ${f.reproduction}` : ""}${test ? `\nTest: ${test.filePath}` : ""}`,
+        },
+        locations: [
+          {
+            physicalLocation: {
+              artifactLocation: {
+                uri: f.file,
+                uriBaseId: "%SRCROOT%",
+              },
+              region: {
+                startLine: f.line,
+              },
+            },
+          },
+        ],
+      };
+    }),
+  }));
+
+  return JSON.stringify(
+    {
+      $schema:
+        "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+      version: "2.1.0",
+      runs,
+    },
+    null,
+    2
+  );
+}
+
 export function formatJson(report: ScanReport, tests: GeneratedTest[]): string {
   const vectors = report.vectors.map((v) => ({
     name: v.name,

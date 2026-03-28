@@ -2,27 +2,51 @@
 
 import { run } from "./runner.ts";
 import { listVectors } from "./vectors/registry.ts";
+import { loadConfig, type BruntConfig } from "./config.ts";
 
-type Args = {
+export type Args = {
   command: string;
   diff: string;
-  provider: "claude-cli" | "anthropic";
-  format: "text" | "json";
+  provider: string;
+  format: "text" | "json" | "sarif";
   failOn: "low" | "medium" | "high" | "critical";
   vectors?: string[];
   noTests: boolean;
+  maxTokens?: number;
+  model?: string;
+  concurrency?: number;
+  sensitivePatterns?: string[];
+  sensitiveEnabled?: boolean;
 };
 
-function parseArgs(argv: string[]): Args {
+type PartialArgs = {
+  command: string;
+  diff?: string;
+  provider?: string;
+  format?: "text" | "json" | "sarif";
+  failOn?: "low" | "medium" | "high" | "critical";
+  vectors?: string[];
+  noTests?: boolean;
+  maxTokens?: number;
+  model?: string;
+};
+
+const VALID_PROVIDERS = ["claude-cli", "anthropic", "ollama"];
+const VALID_FORMATS = ["text", "json", "sarif"];
+const VALID_SEVERITIES = ["low", "medium", "high", "critical"];
+
+function parseArgs(argv: string[]): PartialArgs {
   const args = argv.slice(2);
   const command = args[0] ?? "help";
 
-  let diff = "HEAD~1";
-  let provider: Args["provider"] = "claude-cli";
-  let format: Args["format"] = "text";
-  let failOn: Args["failOn"] = "medium";
+  let diff: string | undefined;
+  let provider: string | undefined;
+  let format: PartialArgs["format"];
+  let failOn: PartialArgs["failOn"];
   let vectors: string[] | undefined;
-  let noTests = false;
+  let noTests: boolean | undefined;
+  let maxTokens: number | undefined;
+  let model: string | undefined;
 
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
@@ -32,32 +56,59 @@ function parseArgs(argv: string[]): Args {
       diff = next;
       i++;
     } else if (arg === "--provider" && next) {
-      if (next !== "claude-cli" && next !== "anthropic") {
-        throw new Error(`Unknown provider: ${next}. Use "claude-cli" or "anthropic".`);
+      if (!VALID_PROVIDERS.includes(next)) {
+        throw new Error(`Unknown provider: ${next}. Use ${VALID_PROVIDERS.map((p) => `"${p}"`).join(", ")}.`);
       }
       provider = next;
       i++;
     } else if (arg === "--format" && next) {
-      if (next !== "text" && next !== "json") {
-        throw new Error(`Unknown format: ${next}. Use "text" or "json".`);
+      if (!VALID_FORMATS.includes(next)) {
+        throw new Error(`Unknown format: ${next}. Use ${VALID_FORMATS.map((f) => `"${f}"`).join(", ")}.`);
       }
-      format = next;
+      format = next as PartialArgs["format"];
       i++;
     } else if (arg === "--fail-on" && next) {
-      if (!["low", "medium", "high", "critical"].includes(next)) {
-        throw new Error(`Unknown severity: ${next}. Use "low", "medium", "high", or "critical".`);
+      if (!VALID_SEVERITIES.includes(next)) {
+        throw new Error(`Unknown severity: ${next}. Use ${VALID_SEVERITIES.map((s) => `"${s}"`).join(", ")}.`);
       }
-      failOn = next as Args["failOn"];
+      failOn = next as PartialArgs["failOn"];
       i++;
     } else if (arg === "--vectors" && next) {
       vectors = next.split(",").map((v) => v.trim());
       i++;
     } else if (arg === "--no-tests") {
       noTests = true;
+    } else if (arg === "--max-tokens" && next) {
+      const n = parseInt(next, 10);
+      if (isNaN(n) || n <= 0) {
+        throw new Error(`Invalid --max-tokens value: ${next}. Must be a positive integer.`);
+      }
+      maxTokens = n;
+      i++;
+    } else if (arg === "--model" && next) {
+      model = next;
+      i++;
     }
   }
 
-  return { command, diff, provider, format, failOn, vectors, noTests };
+  return { command, diff, provider, format, failOn, vectors, noTests, maxTokens, model };
+}
+
+function mergeArgs(partial: PartialArgs, config: BruntConfig): Args {
+  return {
+    command: partial.command,
+    diff: partial.diff ?? config.diff ?? "HEAD~1",
+    provider: partial.provider ?? config.provider ?? "claude-cli",
+    format: (partial.format ?? config.format ?? "text") as Args["format"],
+    failOn: (partial.failOn ?? config.failOn ?? "medium") as Args["failOn"],
+    vectors: partial.vectors ?? config.vectors,
+    noTests: partial.noTests ?? config.noTests ?? false,
+    maxTokens: partial.maxTokens ?? config.maxTokens,
+    model: partial.model ?? config.model,
+    concurrency: config.concurrency,
+    sensitivePatterns: config.sensitive?.patterns,
+    sensitiveEnabled: config.sensitive?.enabled,
+  };
 }
 
 function printHelp() {
@@ -74,11 +125,17 @@ COMMANDS
 
 OPTIONS
   --diff <range>        Git diff range (default: HEAD~1)
-  --provider <name>     LLM provider: claude-cli, anthropic (default: claude-cli)
-  --format <type>       Output format: text, json (default: text)
+  --provider <name>     LLM provider: claude-cli, anthropic, ollama (default: claude-cli)
+  --model <name>        Model name (e.g. llama3 for ollama, claude-sonnet-4-6-20250514 for anthropic)
+  --format <type>       Output format: text, json, sarif (default: text)
   --fail-on <severity>  Exit 1 at this severity: low, medium, high, critical (default: medium)
   --vectors <list>      Comma-separated vectors to run (default: all)
   --no-tests            Skip proof test generation
+  --max-tokens <n>      Maximum tokens per LLM call
+
+CONFIG
+  Place a brunt.config.yaml in your project root to set defaults.
+  CLI flags override config values.
 `);
 }
 
@@ -93,22 +150,25 @@ function printList() {
 
 async function main() {
   try {
-    const args = parseArgs(process.argv);
+    const partial = parseArgs(process.argv);
 
-    if (args.command === "help" || args.command === "--help" || args.command === "-h") {
+    if (partial.command === "help" || partial.command === "--help" || partial.command === "-h") {
       printHelp();
       process.exit(0);
     }
 
-    if (args.command === "list") {
+    if (partial.command === "list") {
       printList();
       process.exit(0);
     }
 
-    if (args.command !== "scan") {
-      console.error(`Unknown command: ${args.command}. Run "brunt help" for usage.`);
+    if (partial.command !== "scan") {
+      console.error(`Unknown command: ${partial.command}. Run "brunt help" for usage.`);
       process.exit(2);
     }
+
+    const config = await loadConfig();
+    const args = mergeArgs(partial, config);
 
     const exitCode = await run(args);
     process.exit(exitCode);
@@ -118,6 +178,11 @@ async function main() {
   }
 }
 
-main();
+const scriptName = process.argv[1]?.split("/").pop() ?? "";
+const isDirectRun = /^cli\.(ts|js|mjs)$/.test(scriptName) || scriptName === "brunt";
 
-export type { Args };
+if (isDirectRun) {
+  main();
+}
+
+export { parseArgs, mergeArgs };

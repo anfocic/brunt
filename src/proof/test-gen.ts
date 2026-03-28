@@ -137,36 +137,64 @@ export type GeneratedTest = {
   content: string;
 };
 
-export async function generateTests(
-  findings: Finding[],
-  provider: Provider
-): Promise<GeneratedTest[]> {
-  const framework = await detectFramework();
-  const tests: GeneratedTest[] = [];
+async function pMap<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  concurrency: number
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let index = 0;
 
-  for (const finding of findings) {
-    const prompt = buildTestPrompt(finding, framework);
-    const content = await provider.query(prompt);
-
-    const cleaned = cleanLlmOutput(content);
-
-    if (!cleaned) {
-      console.error(`Warning: failed to generate test for ${finding.file}:${finding.line}, skipping.`);
-      continue;
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i]!);
     }
-
-    const safeName = finding.file
-      .replace(/[^a-zA-Z0-9]/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "");
-
-    const filePath = `${framework.dir}/${safeName}-L${finding.line}${framework.extension}`;
-
-    tests.push({ finding, filePath, content: cleaned });
   }
 
-  return tests;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => worker()
+  );
+  await Promise.all(workers);
+  return results;
 }
+
+export async function generateTests(
+  findings: Finding[],
+  provider: Provider,
+  concurrency = 3
+): Promise<GeneratedTest[]> {
+  const framework = await detectFramework();
+
+  const results = await pMap(
+    findings,
+    async (finding) => {
+      const prompt = buildTestPrompt(finding, framework);
+      const content = await provider.query(prompt);
+      const cleaned = cleanLlmOutput(content);
+
+      if (!cleaned) {
+        console.error(`Warning: failed to generate test for ${finding.file}:${finding.line}, skipping.`);
+        return null;
+      }
+
+      const safeName = finding.file
+        .replace(/[^a-zA-Z0-9]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+
+      const filePath = `${framework.dir}/${safeName}-L${finding.line}${framework.extension}`;
+
+      return { finding, filePath, content: cleaned } as GeneratedTest;
+    },
+    concurrency
+  );
+
+  return results.filter((r): r is GeneratedTest => r !== null);
+}
+
+export { pMap };
 
 export async function writeTests(tests: GeneratedTest[]): Promise<void> {
   for (const test of tests) {
