@@ -231,10 +231,76 @@ brunt -- found 6 issues (45230ms)
 ────────────────────────────────────────
 ```
 
+## Baseline System (The Usefulness Feature)
+
+Without a baseline, brunt reports the same known issues every scan. Users lose trust after 2 days. The baseline system fixes this.
+
+```bash
+# First time: scan and accept all current findings as known
+brunt baseline init
+
+# Now scans only report NEW findings
+brunt scan
+# Output: "Found 2 new issues (8 baseline issues suppressed)"
+
+# After fixing bugs, update the baseline
+brunt baseline update
+
+# See what's in the baseline
+brunt baseline show
+
+# Show everything (ignore baseline)
+brunt scan --no-baseline
+```
+
+### 3-Tier Matching
+
+The baseline doesn't break when code moves around:
+
+| Tier | What it handles | How |
+|------|----------------|-----|
+| Exact ID | Nothing moved | SHA256 of vector + file + line + title |
+| Fuzzy drift | Lines shifted, title slightly different | Same file, line within 10, title Jaccard > 0.5 |
+| File rename | File moved/renamed | Same vector + title content hash, ignore file path |
+
+This is the single most important feature for actual adoption. Without it, brunt is a demo. With it, brunt is a tool.
+
+## CI: Brunt Reviewing Itself
+
+The repo has CI that runs brunt on its own PRs:
+
+```yaml
+# .github/workflows/ci.yml (dogfood job)
+- name: Brunt scans itself
+  env:
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  run: |
+    node dist/cli.js scan \
+      --provider anthropic \
+      --vectors correctness,security \
+      --no-tests \
+      --fail-on critical \
+      --pr-comment
+```
+
+Three CI jobs: test (bun test), build (bundle + 150KB size gate), dogfood (brunt scans its own PRs and posts review comments).
+
 ## Timeline
 
 | Date | Version | What |
 |------|---------|------|
 | 2026-03-23 | v0.1 | Initial build. CLI, 5 vectors, 2 providers, test gen, canary defense. |
 | 2026-03-28 | v0.3 | Caching, config files, Ollama, SARIF, pre-push hook, PR comments, 50-point code review. Real-world test on intrebit/backend found 3 real issues. |
-| 2026-03-28 | v0.4 | Auto-fix + verify loop, rich TUI, demo mode, interactive triage, streaming, multi-model consensus, fix-and-PR, code quality refactor. 202 tests. Brunt scanning itself found 2 bugs we fixed live. |
+| 2026-03-28 | v0.4 | Auto-fix + verify loop, rich TUI, demo mode, interactive triage, streaming, multi-model consensus, fix-and-PR, baseline system, CI dogfood. 223 tests. Brunt scanning itself found 2 bugs we fixed live. |
+
+## Tomorrow's Checklist
+
+1. Add `ANTHROPIC_API_KEY` to GitHub repo secrets
+2. Run TESTPLAN.md tests with fresh key (8 tests, ~15 minutes)
+3. Capture screenshots: banner, progress board, [FIXED] badges, dashboard, demo output, JSON output
+4. Record terminal session for streaming preview (optional but impressive)
+5. Check if dogfood CI ran on PR #1 (after adding secret)
+6. Write blog post from this doc
+7. Merge PR #1 to master
+8. `npm publish`

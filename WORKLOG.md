@@ -52,19 +52,32 @@
 - Found 2 real bugs in its own code, fixed on the spot
 - Default model updated from date-suffixed to `claude-sonnet-4-6`
 
+**Baseline System**
+- `.brunt-baseline.json` for known/accepted findings
+- `brunt baseline init/update/show/clear` commands
+- 3-tier matching: exact ID, fuzzy drift (line +-10, Jaccard > 0.5), file rename (content hash)
+- `--no-baseline` flag to show all findings
+- Auto-suppresses during scan: "N baseline issues suppressed"
+- Scan engine extracted to `src/engine.ts` (reusable by baseline commands + future GitHub App)
+
+**CI**
+- `.github/workflows/ci.yml` with 3 jobs: test, build (150KB size gate), dogfood
+- Dogfood: brunt scans its own PRs via Anthropic API, posts findings as PR review comments
+
 ### Stats
-- 202 tests, 0 failures, 103KB bundle, zero runtime deps
-- 22 source files, ~3,200 lines
-- Branch: feat/v0.4-ai-showcase (not yet committed/pushed)
-- New CLI flags: --fix, --fix-retries, --interactive, --pr, --consensus, --consensus-providers
-- New commands: brunt demo
+- 223 tests, 0 failures, 110KB bundle, zero runtime deps
+- 24 source files, ~3,800 lines
+- Branch: feat/v0.4-ai-showcase (pushed, PR #1 open)
+- New CLI flags: --fix, --fix-retries, --interactive, --pr, --consensus, --consensus-providers, --no-baseline
+- New commands: brunt demo, brunt baseline
 
 ### What's next
-- Commit and push feat/v0.4-ai-showcase
-- Run TESTPLAN.md with fresh API key for blog post numbers
+- Add ANTHROPIC_API_KEY to GitHub repo secrets (enables dogfood CI)
+- Run TESTPLAN.md with fresh API key (capture real numbers + screenshots for blog)
 - Write blog post using SHOWCASE.md material
-- Merge to master, publish to npm
-- See ROADMAP.md for v1.0 features
+- Merge PR #1 to master
+- Publish to npm
+- Build GitHub App (Phase 2 -- plan approved, in plan file)
 
 ## 2026-03-28 — v0.3 release + real-world testing
 
