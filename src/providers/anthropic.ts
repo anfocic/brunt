@@ -1,6 +1,6 @@
 import type { Provider, ProviderOptions } from "./types.ts";
 
-const TIMEOUT_MS = 120_000; // 2 minutes
+const DEFAULT_TIMEOUT_MS = 300_000; // 5 minutes
 const DEFAULT_MODEL = "claude-sonnet-4-6-20250514";
 const DEFAULT_MAX_TOKENS = 4096;
 
@@ -8,6 +8,7 @@ export class AnthropicProvider implements Provider {
   name = "anthropic";
   private apiKey: string;
   private model: string;
+  private timeout: number;
   private maxTokens: number;
 
   constructor(options: ProviderOptions = {}) {
@@ -18,11 +19,12 @@ export class AnthropicProvider implements Provider {
     this.apiKey = key;
     this.model = options.model ?? DEFAULT_MODEL;
     this.maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
+    this.timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
   }
 
   async query(prompt: string): Promise<string> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), this.timeout);
 
     try {
       const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -57,7 +59,7 @@ export class AnthropicProvider implements Provider {
       return text;
     } catch (err: any) {
       if (err?.name === "AbortError") {
-        throw new Error(`Anthropic API timed out after ${TIMEOUT_MS / 1000}s`);
+        throw new Error(`Anthropic API timed out after ${this.timeout / 1000}s`);
       }
       throw err;
     } finally {
