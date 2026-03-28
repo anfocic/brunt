@@ -4,6 +4,7 @@ import { run } from "./runner.ts";
 import { listVectors } from "./vectors/registry.ts";
 import { loadConfig, type BruntConfig } from "./config.ts";
 import { init } from "./init.ts";
+import { runDemo } from "./demo.ts";
 
 export type Args = {
   command: string;
@@ -20,6 +21,12 @@ export type Args = {
   concurrency?: number;
   sensitivePatterns?: string[];
   sensitiveEnabled?: boolean;
+  fix: boolean;
+  fixRetries: number;
+  interactive: boolean;
+  pr: boolean;
+  consensus: boolean;
+  consensusProviders?: string[];
 };
 
 type PartialArgs = {
@@ -34,6 +41,12 @@ type PartialArgs = {
   prComment?: boolean;
   maxTokens?: number;
   model?: string;
+  fix?: boolean;
+  fixRetries?: number;
+  interactive?: boolean;
+  pr?: boolean;
+  consensus?: boolean;
+  consensusProviders?: string[];
 };
 
 function detectDefaultDiff(): string {
@@ -60,6 +73,12 @@ function parseArgs(argv: string[]): PartialArgs {
   let prComment: boolean | undefined;
   let maxTokens: number | undefined;
   let model: string | undefined;
+  let fix: boolean | undefined;
+  let fixRetries: number | undefined;
+  let interactive: boolean | undefined;
+  let pr: boolean | undefined;
+  let consensus: boolean | undefined;
+  let consensusProviders: string[] | undefined;
 
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
@@ -105,12 +124,35 @@ function parseArgs(argv: string[]): PartialArgs {
     } else if (arg === "--model" && next) {
       model = next;
       i++;
+    } else if (arg === "--interactive") {
+      interactive = true;
+    } else if (arg === "--pr") {
+      pr = true;
+    } else if (arg === "--consensus") {
+      consensus = true;
+    } else if (arg === "--consensus-providers" && next) {
+      consensusProviders = next.split(",").map((p) => p.trim());
+      for (const p of consensusProviders) {
+        if (!VALID_PROVIDERS.includes(p)) {
+          throw new Error(`Unknown provider in --consensus-providers: ${p}. Use ${VALID_PROVIDERS.map((x) => `"${x}"`).join(", ")}.`);
+        }
+      }
+      i++;
+    } else if (arg === "--fix") {
+      fix = true;
+    } else if (arg === "--fix-retries" && next) {
+      const n = parseInt(next, 10);
+      if (isNaN(n) || n < 1 || n > 5) {
+        throw new Error(`Invalid --fix-retries value: ${next}. Must be 1-5.`);
+      }
+      fixRetries = n;
+      i++;
     } else if (arg?.startsWith("--")) {
       throw new Error(`Unknown flag: ${arg}. Run "brunt help" for usage.`);
     }
   }
 
-  return { command, diff, provider, format, failOn, vectors, noTests, noCache, prComment, maxTokens, model };
+  return { command, diff, provider, format, failOn, vectors, noTests, noCache, prComment, maxTokens, model, fix, fixRetries, interactive, pr, consensus, consensusProviders };
 }
 
 function mergeArgs(partial: PartialArgs, config: BruntConfig): Args {
@@ -129,6 +171,12 @@ function mergeArgs(partial: PartialArgs, config: BruntConfig): Args {
     concurrency: config.concurrency,
     sensitivePatterns: config.sensitive?.patterns,
     sensitiveEnabled: config.sensitive?.enabled,
+    fix: partial.fix ?? config.fix ?? false,
+    fixRetries: partial.fixRetries ?? config.fixRetries ?? 2,
+    interactive: partial.interactive ?? false,
+    pr: partial.pr ?? false,
+    consensus: partial.consensus ?? false,
+    consensusProviders: partial.consensusProviders,
   };
 }
 
@@ -138,11 +186,13 @@ brunt - adversarial AI code review
 
 USAGE
   brunt scan [options]
+  brunt demo [--provider <name>]
   brunt init
   brunt list
 
 COMMANDS
   scan    Analyze a diff for bugs and vulnerabilities
+  demo    Run a showcase scan against a built-in buggy file
   init    Install git pre-push hook for automatic scanning
   list    Show available vectors
 
@@ -157,6 +207,12 @@ OPTIONS
   --no-cache            Skip cache, force fresh LLM analysis
   --pr-comment          Post findings as GitHub PR review comments
   --max-tokens <n>      Maximum tokens per LLM call
+  --fix                 Auto-generate fixes and verify against proof tests
+  --fix-retries <n>     Max fix attempts per finding (default: 2, max: 5)
+  --interactive         Enter interactive triage mode after scan
+  --pr                  Create a PR with verified fixes (requires --fix)
+  --consensus           Run scan across multiple models for agreement
+  --consensus-providers Comma-separated providers for consensus mode
 
 CONFIG
   Place a brunt.config.yaml in your project root to set defaults.
@@ -190,6 +246,12 @@ async function main() {
     if (partial.command === "list") {
       printList();
       process.exit(0);
+    }
+
+    if (partial.command === "demo") {
+      const provider = partial.provider ?? "claude-cli";
+      const exitCode = await runDemo(provider, partial.model);
+      process.exit(exitCode);
     }
 
     if (partial.command !== "scan") {

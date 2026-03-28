@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import type { Provider, ProviderOptions } from "./types.ts";
 
 const DEFAULT_TIMEOUT_MS = 300_000; // 5 minutes
@@ -32,5 +32,23 @@ export class ClaudeCliProvider implements Provider {
         resolve((stdout ?? "").trim());
       });
     });
+  }
+
+  async *queryStream(prompt: string): AsyncIterable<string> {
+    const args = ["-p", prompt];
+    if (this.model) args.push("--model", this.model);
+
+    const child = spawn("claude", args, { stdio: ["pipe", "pipe", "pipe"] });
+    const timeout = setTimeout(() => child.kill(), this.timeout);
+
+    try {
+      if (child.stdout) {
+        for await (const chunk of child.stdout) {
+          yield chunk.toString();
+        }
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }

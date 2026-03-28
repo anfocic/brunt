@@ -2,6 +2,7 @@ import { readFile, access, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Finding } from "../vectors/types.ts";
 import type { Provider } from "../providers/types.ts";
+import { pMap, cleanLlmResponse } from "../util.ts";
 
 type TestFramework = {
   name: string;
@@ -85,52 +86,7 @@ Requirements:
 Respond with ONLY the test file content, no markdown fences, no explanation.`;
 }
 
-export function cleanLlmOutput(raw: string): string {
-  let text = raw;
-
-  text = text.replace(/^```[\w]*\n?/gm, "").replace(/\n?```$/gm, "");
-
-  const lines = text.split("\n");
-  const codeStart = lines.findIndex(
-    (l) => l.startsWith("import ") || l.startsWith("const ") ||
-           l.startsWith("describe(") || l.startsWith("test(") ||
-           l.startsWith("it(") || l.startsWith("from ") ||
-           l.startsWith("use ") || l.startsWith("#")
-  );
-
-  if (codeStart > 0) {
-    const preamble = lines.slice(0, codeStart).join("\n").trim();
-    const looksLikeChatter = !preamble.includes("import ") && !preamble.includes("require(");
-    if (looksLikeChatter) {
-      text = lines.slice(codeStart).join("\n");
-    }
-  }
-
-  const trimmedLines = text.split("\n");
-  let lastCodeLine = trimmedLines.length - 1;
-  for (let i = trimmedLines.length - 1; i >= 0; i--) {
-    const trimmed = trimmedLines[i]!.trim();
-    if (trimmed === "" || trimmed.startsWith("//")) continue;
-    if (trimmed.endsWith("}") || trimmed.endsWith(";") || trimmed.endsWith(")")) {
-      lastCodeLine = i;
-      break;
-    }
-    if (trimmed.match(/^[A-Z]/) && trimmed.includes(" ")) {
-      lastCodeLine = i - 1;
-    } else {
-      break;
-    }
-  }
-
-  text = trimmedLines.slice(0, lastCodeLine + 1).join("\n");
-  const result = text.trim() + "\n";
-
-  if (result.trim().length < 10) {
-    return "";
-  }
-
-  return result;
-}
+export { cleanLlmResponse as cleanLlmOutput } from "../util.ts";
 
 export type GeneratedTest = {
   finding: Finding;
@@ -138,28 +94,6 @@ export type GeneratedTest = {
   content: string;
 };
 
-async function pMap<T, R>(
-  items: T[],
-  fn: (item: T) => Promise<R>,
-  concurrency: number
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let index = 0;
-
-  async function worker() {
-    while (index < items.length) {
-      const i = index++;
-      results[i] = await fn(items[i]!);
-    }
-  }
-
-  const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    () => worker()
-  );
-  await Promise.all(workers);
-  return results;
-}
 
 export async function generateTests(
   findings: Finding[],
@@ -173,7 +107,7 @@ export async function generateTests(
     async (finding) => {
       const prompt = buildTestPrompt(finding, framework);
       const content = await provider.query(prompt);
-      const cleaned = cleanLlmOutput(content);
+      const cleaned = cleanLlmResponse(content);
 
       if (!cleaned) {
         console.error(`Warning: failed to generate test for ${finding.file}:${finding.line}, skipping.`);
@@ -195,7 +129,7 @@ export async function generateTests(
   return results.filter((r): r is GeneratedTest => r !== null);
 }
 
-export { pMap };
+export { pMap } from "../util.ts";
 
 export async function writeTests(tests: GeneratedTest[]): Promise<void> {
   for (const test of tests) {

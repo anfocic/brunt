@@ -36,6 +36,22 @@ describe("parseArgs", () => {
     expect(result.maxTokens).toBe(2048);
     expect(result.model).toBe("llama3");
   });
+
+  test("parses --fix flag", () => {
+    const result = parseArgs(["node", "cli", "scan", "--fix"]);
+    expect(result.fix).toBe(true);
+  });
+
+  test("parses --fix-retries flag", () => {
+    const result = parseArgs(["node", "cli", "scan", "--fix-retries", "3"]);
+    expect(result.fixRetries).toBe(3);
+  });
+
+  test("rejects invalid --fix-retries", () => {
+    expect(() => parseArgs(["node", "cli", "scan", "--fix-retries", "0"])).toThrow();
+    expect(() => parseArgs(["node", "cli", "scan", "--fix-retries", "6"])).toThrow();
+    expect(() => parseArgs(["node", "cli", "scan", "--fix-retries", "abc"])).toThrow();
+  });
 });
 
 describe("mergeArgs", () => {
@@ -85,6 +101,28 @@ describe("mergeArgs", () => {
 
     expect(args.provider).toBe("anthropic");
     expect(args.format).toBe("sarif");
+  });
+
+  test("fix defaults to false", () => {
+    const partial = parseArgs(["node", "cli", "scan"]);
+    const args = mergeArgs(partial, {});
+    expect(args.fix).toBe(false);
+    expect(args.fixRetries).toBe(2);
+  });
+
+  test("fix config is passed through", () => {
+    const partial = parseArgs(["node", "cli", "scan"]);
+    const config: BruntConfig = { fix: true, fixRetries: 3 };
+    const args = mergeArgs(partial, config);
+    expect(args.fix).toBe(true);
+    expect(args.fixRetries).toBe(3);
+  });
+
+  test("CLI --fix overrides config", () => {
+    const partial = parseArgs(["node", "cli", "scan", "--fix"]);
+    const config: BruntConfig = { fix: false };
+    const args = mergeArgs(partial, config);
+    expect(args.fix).toBe(true);
   });
 
   test("sensitive config is passed through", () => {

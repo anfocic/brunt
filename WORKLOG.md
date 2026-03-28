@@ -1,5 +1,71 @@
 # Brunt Worklog
 
+## 2026-03-28 — v0.4 AI showcase
+
+### What was done
+
+**Phase 1: Auto-Fix + Rich TUI**
+- Auto-fix engine: generate fix via LLM, apply, run proof test, verify/rollback, retry
+- LCS-based unified diff generator (src/diff-gen.ts) for showing fix diffs
+- Path validation to prevent LLM-directed path traversal
+- Per-file grouping to prevent race conditions on concurrent fixes
+- TUI: Spinner, ProgressBoard (multi-line in-place updates), ASCII banner
+- TTY detection with CI-safe fallback (plain text)
+- Summary dashboard with severity breakdown and fix counts
+- Inline diff display (green/red) for verified fixes
+- [FIXED] / [FIX FAILED] badges per finding in text and JSON output
+
+**Phase 2: Demo + Interactive**
+- `brunt demo` -- embedded buggy file (off-by-one, SQL injection, negative refund), temp git repo, full pipeline
+- `brunt scan --interactive` -- REPL with explain/fix/accept/dismiss/quit, async processing lock
+
+**Phase 3: Streaming + Consensus + PR**
+- `queryStream()` on all 3 providers (Anthropic SSE, Ollama line-delimited JSON, Claude CLI spawn)
+- Streaming wired into vector factory -- live token preview on stderr during analysis
+- Multi-model consensus engine with fuzzy finding matching (Jaccard + line proximity)
+- `--consensus` and `--consensus-providers` flags
+- Consensus report formatter with [N/M models] badges
+- `brunt scan --fix --pr` -- creates branch, commits verified fixes, opens PR via gh CLI
+- Detached HEAD detection, base branch restoration, markdown sanitization in PR body
+
+**Code Quality Refactor**
+- Extracted src/colors.ts (ANSI codes were in 3 files)
+- Extracted src/util.ts (pMap, findingKey, cleanLlmResponse)
+- Extracted src/diff-gen.ts (generateDiff + computeLcs out of fix-gen)
+- Merged cleanFixOutput + cleanLlmOutput into shared cleanLlmResponse
+- Deleted dead code: duplicate LCS computation, unused dp variable, identical ternaries
+- Extracted runConsensus() from run(), hoisted redundant sanitize/context calls
+- Fixed Ollama timeout (wasn't respecting options.timeout)
+- Fixed err:any to err:unknown across providers
+- Fixed formatJson using raw string instead of findingKey() (found by brunt scanning itself)
+- Fixed createFixPr receiving unfiltered fixes array (found by brunt scanning itself)
+
+**Self-Review (3 rounds)**
+- Phase 1: caught 4 critical bugs (race condition, path traversal, wrong output cleaner, broken diff)
+- Phase 2+3: caught 24 issues (4 critical, 5 high, 9 medium, 6 low)
+- Code quality: caught 24 structural issues, fixed top 9
+- Set up PreToolUse hook to enforce self-review on large commits
+
+**Live API Test**
+- Brunt scanned itself via Anthropic API (claude-sonnet-4-6)
+- 8 findings in 57 seconds on 13 files
+- Found 2 real bugs in its own code, fixed on the spot
+- Default model updated from date-suffixed to `claude-sonnet-4-6`
+
+### Stats
+- 202 tests, 0 failures, 103KB bundle, zero runtime deps
+- 22 source files, ~3,200 lines
+- Branch: feat/v0.4-ai-showcase (not yet committed/pushed)
+- New CLI flags: --fix, --fix-retries, --interactive, --pr, --consensus, --consensus-providers
+- New commands: brunt demo
+
+### What's next
+- Commit and push feat/v0.4-ai-showcase
+- Run TESTPLAN.md with fresh API key for blog post numbers
+- Write blog post using SHOWCASE.md material
+- Merge to master, publish to npm
+- See ROADMAP.md for v1.0 features
+
 ## 2026-03-28 — v0.3 release + real-world testing
 
 ### What was done

@@ -17,6 +17,8 @@ export type BruntConfig = {
     patterns?: string[];
     enabled?: boolean;
   };
+  fix?: boolean;
+  fixRetries?: number;
 };
 
 const CONFIG_FILENAME = "brunt.config.yaml";
@@ -174,6 +176,12 @@ function mapToConfig(raw: Record<string, unknown>): BruntConfig {
 
   if (Array.isArray(raw.vectors)) {
     config.vectors = raw.vectors.filter((v): v is string => typeof v === "string");
+  }
+
+  if (typeof raw.fix === "boolean") config.fix = raw.fix;
+  if (raw.fixRetries !== undefined) {
+    const n = parseInt(String(raw.fixRetries), 10);
+    if (!isNaN(n) && n >= 1 && n <= 5) config.fixRetries = n;
   }
 
   if (typeof raw.sensitive === "object" && raw.sensitive !== null) {
