@@ -54,7 +54,53 @@ function stripLineComments(line: string, language: string): string {
 }
 
 function stripBlockComments(text: string): string {
-  return text.replace(/\/\*[\s\S]*?\*\//g, "");
+  let result = "";
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  let inBlock = false;
+  let escaped = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    const next = text[i + 1];
+
+    if (escaped) {
+      escaped = false;
+      if (!inBlock) result += ch;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escaped = true;
+      if (!inBlock) result += ch;
+      continue;
+    }
+
+    if (inBlock) {
+      if (ch === "*" && next === "/") {
+        inBlock = false;
+        i++;
+      }
+      continue;
+    }
+
+    const inString = inSingle || inDouble || inTemplate;
+
+    if (!inString && ch === "/" && next === "*") {
+      inBlock = true;
+      i++;
+      continue;
+    }
+
+    if (ch === "'" && !inDouble && !inTemplate) inSingle = !inSingle;
+    else if (ch === '"' && !inSingle && !inTemplate) inDouble = !inDouble;
+    else if (ch === "`" && !inSingle && !inDouble) inTemplate = !inTemplate;
+
+    result += ch;
+  }
+
+  return result.trimEnd();
 }
 
 function stripHtmlComments(text: string): string {
@@ -79,7 +125,14 @@ export function sanitizeDiff(files: DiffFile[]): DiffFile[] {
         return cleaned;
       }).filter((line) => line.trim().length > 0);
 
-      return { added: cleanAdded, removed: cleanRemoved, context: hunk.context };
+      const cleanContext = hunk.context.map((line) => {
+        let cleaned = stripLineComments(line, file.language);
+        cleaned = stripBlockComments(cleaned);
+        cleaned = stripHtmlComments(cleaned);
+        return cleaned;
+      }).filter((line) => line.trim().length > 0);
+
+      return { added: cleanAdded, removed: cleanRemoved, context: cleanContext };
     }),
   }));
 }

@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import type { Finding, Severity, ScanReport } from "./vectors/types.ts";
 import type { GeneratedTest } from "./proof/test-gen.ts";
 
+export const VERSION = "0.3.0";
+
 function findingId(vectorName: string, f: Finding): string {
   const hash = createHash("sha256")
     .update(`${vectorName}:${f.file}:${f.line}:${f.title}`)
@@ -91,7 +93,7 @@ export function formatSarif(report: ScanReport, tests: GeneratedTest[]): string 
     tool: {
       driver: {
         name: `brunt/${vector.name}`,
-        version: "0.3.0",
+        version: VERSION,
         rules: vector.findings.map((f) => ({
           id: findingId(vector.name, f),
           shortDescription: { text: f.title },

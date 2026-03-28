@@ -99,4 +99,35 @@ That's all I found.`;
     expect(findings.length).toBe(1);
     expect(findings[0].file).toBe("a.ts");
   });
+
+  test("handles brackets inside JSON string values", () => {
+    const raw = JSON.stringify([
+      {
+        file: "src/api.ts",
+        line: 10,
+        severity: "high",
+        title: "Array [1,2,3] not validated",
+        description: "The input array [items] is used without bounds checking",
+        reproduction: "Pass array [null, undefined]",
+      },
+    ]);
+    const findings = parseFindings(raw, "test");
+    expect(findings.length).toBe(1);
+    expect(findings[0].title).toBe("Array [1,2,3] not validated");
+  });
+
+  test("handles escaped quotes inside JSON strings", () => {
+    const raw = JSON.stringify([
+      {
+        file: "test.ts",
+        line: 1,
+        severity: "low",
+        title: 'Uses eval("code")',
+        description: 'Calls eval with string containing "brackets [and] quotes"',
+        reproduction: "Call the function",
+      },
+    ]);
+    const findings = parseFindings(raw, "test");
+    expect(findings.length).toBe(1);
+  });
 });
