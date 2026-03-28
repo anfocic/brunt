@@ -3,15 +3,14 @@
 Adversarial AI code review. Finds bugs, generates failing tests as proof.
 
 Brunt scans your git diffs, runs adversarial analysis via LLM, and outputs
-committable test files that prove the bugs it finds. No opinions — just proof.
+committable test files that prove the bugs it finds. No opinions -- just proof.
 
 ## Quick Start
 
 ```bash
-# Install
 npm i -g brunt
 
-# Scan your last commit (uses Claude Code CLI — free with Max plan)
+# Scan your last commit
 brunt scan
 
 # Scan staged changes
@@ -24,21 +23,26 @@ brunt scan --diff origin/main..HEAD
 ## What It Does
 
 ```
-$ brunt scan --diff HEAD~1
+$ brunt scan
 
 Parsing diff...
 Analyzing 3 files...
-Running 2 vectors via claude-cli...
+Running 5 vectors via claude-cli...
+  correctness: 1 finding (8102ms)
+  security: 1 finding (14201ms)
+  performance: 0 findings (9800ms)
+  resilience: 0 findings (7540ms)
+  business-logic: 0 findings (11300ms)
 Found 2 issues. Generating proof tests...
 
-brunt — found 2 issues (14230ms)
+brunt -- found 2 issues (14230ms)
 
 [correctness] 1 finding (8102ms)
 
   HIGH src/utils.ts:23
   parseInt without radix or NaN handling
   parseInt('abc') returns NaN which propagates silently.
-  Reproduction: Call parseAge('abc') — returns NaN instead of throwing
+  Reproduction: Call parseAge('abc') -- returns NaN instead of throwing
   Test: tests/brunt/src-utils-ts-L23.test.ts
 
 [security] 1 finding (14201ms)
@@ -54,12 +58,15 @@ Every finding includes a generated test file you can run immediately.
 
 ## Vectors
 
-Brunt runs multiple analysis vectors in parallel:
+Brunt runs 5 analysis vectors in parallel:
 
 | Vector | What it finds |
 |---|---|
 | `correctness` | Edge cases, off-by-one, null handling, type coercion, logic errors |
 | `security` | SQL injection, XSS, command injection, path traversal, SSRF, hardcoded secrets |
+| `performance` | N+1 queries, quadratic complexity, memory leaks, unbounded operations |
+| `resilience` | Missing error handling, unhandled promises, timeouts, cascading failures |
+| `business-logic` | Abuse scenarios, race conditions, quantity manipulation, state machine violations |
 
 ```bash
 # Run all vectors (default)
@@ -75,44 +82,181 @@ brunt list
 
 ## Providers
 
-Brunt works with your existing Claude setup — no extra API key needed.
-
 | Provider | Cost | Setup |
 |---|---|---|
 | `claude-cli` (default) | Free with Claude Code plan | Just have `claude` installed |
 | `anthropic` | Pay per token | Set `ANTHROPIC_API_KEY` env var |
+| `ollama` | Free, runs locally | Install Ollama, run `ollama serve` |
 
 ```bash
-# Uses your Claude Code subscription (default)
+# Claude Code CLI (default)
 brunt scan
 
-# Uses Anthropic API directly
+# Anthropic API
 ANTHROPIC_API_KEY=sk-... brunt scan --provider anthropic
+
+# Local model via Ollama
+brunt scan --provider ollama --model llama3
 ```
+
+Ollama supports any model you've pulled. Set `OLLAMA_HOST` to point to a remote instance.
+
+## Config File
+
+Create `brunt.config.yaml` in your project root to set defaults. CLI flags override config.
+
+```yaml
+provider: anthropic
+model: claude-sonnet-4-6-20250514
+format: text
+failOn: medium
+maxTokens: 4096
+concurrency: 3
+
+vectors:
+  - correctness
+  - security
+
+sensitive:
+  enabled: true
+  patterns:
+    - "*.secret"
+```
+
+Config is searched from the current directory up to the git root.
+
+## Output Formats
+
+```bash
+# Human-readable (default)
+brunt scan
+
+# JSON (pipe-friendly, progress goes to stderr)
+brunt scan --format json 2>/dev/null | jq .
+
+# SARIF (GitHub Code Scanning, VS Code, SonarQube)
+brunt scan --format sarif > results.sarif
+```
+
+## Git Hook
+
+```bash
+# Install a pre-push hook that scans before every push
+brunt init
+```
+
+The hook runs `brunt scan --no-tests` using your `brunt.config.yaml` defaults.
+Push with `--no-verify` to skip.
 
 ## CI Integration
 
-### GitHub Actions
+### GitHub Actions (simple)
 
 ```yaml
-name: Brunt Review
+name: Brunt
 on: [pull_request]
 
 jobs:
-  brunt:
+  review:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install Brunt
-        run: npm i -g brunt
-
       - name: Run Brunt
-        run: brunt scan --diff origin/main..HEAD --no-tests --fail-on critical
+        run: npx brunt scan --no-tests --fail-on critical
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+Brunt auto-detects `GITHUB_BASE_REF` in pull requests, so `--diff` is optional.
+
+### GitHub Actions (with PR comments + SARIF)
+
+```yaml
+name: Brunt
+on: [pull_request]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anfocic/brunt@main
+        with:
+          provider: anthropic
+          fail-on: critical
+          pr-comment: 'true'
+          sarif-upload: 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+This posts inline review comments on the PR and uploads findings to the GitHub Security tab.
+
+### PR Comments
+
+```bash
+# Requires GITHUB_TOKEN, GITHUB_REPOSITORY, and BRUNT_PR_NUMBER
+brunt scan --pr-comment
+```
+
+Posts a GitHub PR review with inline comments per finding. Approves if clean, requests changes if issues found.
+
+## Caching
+
+Brunt caches scan results in `.brunt-cache/`. If the same diff, vectors, provider, and model are used again, the cached findings are returned instantly without calling the LLM.
+
+```bash
+# Force fresh analysis
+brunt scan --no-cache
+```
+
+Add `.brunt-cache/` to your `.gitignore` (the default `.gitignore` already excludes it).
+
+## Sensitive Files
+
+By default, brunt excludes sensitive files from the diff sent to the LLM:
+
+`.env`, `.env.*`, `*secret*`, `*credential*`, `*password*`, `*.pem`, `*.key`, `*.p12`, `id_rsa*`, `*.keystore`
+
+Add custom patterns or disable filtering in `brunt.config.yaml`:
+
+```yaml
+sensitive:
+  enabled: false  # disable filtering
+  patterns:       # add extra patterns
+    - "*.private"
+```
+
+## Prompt Injection Defense
+
+Brunt injects a synthetic canary bug into every scan and verifies the LLM detects it. If the canary is missed, brunt warns that the analysis may have been compromised. A second LLM call confirms the canary wasn't a false positive.
+
+All comments are stripped from the diff before sending to the LLM to prevent injection via code comments.
+
+## Options
+
+```
+--diff <range>        Git diff range (default: HEAD~1, auto-detects in CI)
+--provider <name>     LLM provider: claude-cli, anthropic, ollama (default: claude-cli)
+--model <name>        Model name (e.g. llama3, claude-sonnet-4-6-20250514)
+--format <type>       Output format: text, json, sarif (default: text)
+--fail-on <severity>  Exit 1 at this severity: low, medium, high, critical (default: medium)
+--vectors <list>      Comma-separated vectors to run (default: all)
+--no-tests            Skip proof test generation
+--no-cache            Force fresh LLM analysis
+--pr-comment          Post findings as GitHub PR review comments
+--max-tokens <n>      Maximum tokens per LLM call
 ```
 
 ### Exit Codes
@@ -123,38 +267,10 @@ jobs:
 | 1 | Findings at or above `--fail-on` severity |
 | 2 | Brunt error (config, provider, etc.) |
 
-## Options
-
-```
---diff <range>        Git diff range (default: HEAD~1)
---provider <name>     LLM provider: claude-cli, anthropic (default: claude-cli)
---format <type>       Output format: text, json (default: text)
---fail-on <severity>  Exit 1 at this severity: low, medium, high, critical (default: medium)
---vectors <list>      Comma-separated vectors to run (default: all)
---no-tests            Skip proof test generation (faster, good for CI)
-```
-
-## JSON Output
-
-```bash
-brunt scan --format json 2>/dev/null | jq .
-```
-
-Progress messages go to stderr, JSON goes to stdout — safe to pipe.
-
-## How It Works
-
-1. Parses your git diff into structured file changes
-2. Reads full file context for changed files
-3. Runs selected vectors in parallel — each sends the diff + context to an LLM with an adversarial prompt
-4. Parses findings from LLM responses (strict JSON validation, malformed findings are dropped)
-5. For each finding, generates a proof test using a second LLM call that detects your test framework
-6. Writes test files and outputs a report
-
 ## Development
 
 ```bash
-git clone https://github.com/your-org/brunt.git
+git clone https://github.com/anfocic/brunt.git
 cd brunt
 bun install
 bun test

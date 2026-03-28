@@ -36,6 +36,12 @@ type PartialArgs = {
   model?: string;
 };
 
+function detectDefaultDiff(): string {
+  const baseRef = process.env.GITHUB_BASE_REF;
+  if (baseRef) return `origin/${baseRef}..HEAD`;
+  return "HEAD~1";
+}
+
 const VALID_PROVIDERS = ["claude-cli", "anthropic", "ollama"];
 const VALID_FORMATS = ["text", "json", "sarif"];
 const VALID_SEVERITIES = ["low", "medium", "high", "critical"];
@@ -110,7 +116,7 @@ function parseArgs(argv: string[]): PartialArgs {
 function mergeArgs(partial: PartialArgs, config: BruntConfig): Args {
   return {
     command: partial.command,
-    diff: partial.diff ?? config.diff ?? "HEAD~1",
+    diff: partial.diff ?? config.diff ?? detectDefaultDiff(),
     provider: partial.provider ?? config.provider ?? "claude-cli",
     format: (partial.format ?? config.format ?? "text") as Args["format"],
     failOn: (partial.failOn ?? config.failOn ?? "medium") as Args["failOn"],

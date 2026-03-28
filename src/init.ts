@@ -22,12 +22,13 @@ else
 fi
 
 echo "brunt: running pre-push scan..."
-"$BRUNT" scan --fail-on high --no-tests
+"$BRUNT" scan --no-tests
 
 EXIT_CODE=$?
 if [ $EXIT_CODE -ne 0 ]; then
+  echo ""
   echo "brunt: scan found issues. Push blocked."
-  echo "brunt: run 'brunt scan' to see details, or push with --no-verify to skip."
+  echo "brunt: run 'brunt scan' for details, or push with --no-verify to skip."
   exit 1
 fi
 `;

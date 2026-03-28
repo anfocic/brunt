@@ -77,11 +77,9 @@ export async function run(args: Args): Promise<number> {
       vectors.map(async (vector) => {
         const start = performance.now();
         const findings = await vector.analyze(filesWithCanary, context, provider);
-        return {
-          name: vector.name,
-          findings,
-          duration: Math.round(performance.now() - start),
-        };
+        const duration = Math.round(performance.now() - start);
+        console.error(`  ${vector.name}: ${findings.length} finding${findings.length === 1 ? "" : "s"} (${duration}ms)`);
+        return { name: vector.name, findings, duration };
       })
     );
 
