@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { scanEngine } from "../src/engine.ts";
+import { scanEngine, type ProgressEvent } from "../src/engine.ts";
 import type { DiffFile } from "../src/vectors/types.ts";
 import type { Provider } from "../src/providers/types.ts";
 
@@ -70,13 +70,13 @@ describe("scanEngine", () => {
     const { createVector } = await import("../src/vectors/factory.ts");
     const vector = createVector("test-vec", "test", "Find bugs.");
 
-    const events: string[] = [];
+    const events: ProgressEvent[] = [];
     await scanEngine(
       { files: mockFiles, vectors: [vector], provider: emptyProvider, noCache: true },
       (event) => events.push(event)
     );
 
-    expect(events).toContain("vectors-start");
-    expect(events).toContain("vector-done");
+    expect(events.some((e) => e.type === "vectors-start")).toBe(true);
+    expect(events.some((e) => e.type === "vector-done")).toBe(true);
   });
 });
