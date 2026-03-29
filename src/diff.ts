@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { exec } from "./util.ts";
 
 export type DiffHunk = {
   added: string[];
@@ -121,13 +121,6 @@ export function parseDiff(raw: string): DiffFile[] {
   return files;
 }
 
-function spawn(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve) => {
-    execFile(cmd, args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-      resolve({ stdout: stdout ?? "", stderr: stderr ?? "", exitCode: error?.code ? 1 : error ? 1 : 0 });
-    });
-  });
-}
 
 export type SensitiveOptions = {
   enabled?: boolean;
@@ -138,7 +131,7 @@ export async function getDiff(
   range: string,
   sensitive?: SensitiveOptions
 ): Promise<DiffFile[]> {
-  const { stdout, stderr, exitCode } = await spawn("git", ["diff", range]);
+  const { stdout, stderr, exitCode } = await exec("git", ["diff", range], { maxBuffer: 10 * 1024 * 1024 });
 
   if (exitCode !== 0) {
     throw new Error(`git diff failed: ${stderr.trim()}`);

@@ -1,8 +1,8 @@
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
-import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { run } from "./runner.ts";
+import { exec } from "./util.ts";
 import type { Args } from "./cli.ts";
 
 const DEMO_SOURCE = `// shopping-cart.ts — demo file with intentional bugs
@@ -38,13 +38,10 @@ function runQuery(sql: string): number {
 }
 `;
 
-function git(cwd: string, ...args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile("git", args, { cwd }, (error, stdout) => {
-      if (error) reject(error);
-      else resolve((stdout ?? "").trim());
-    });
-  });
+async function git(cwd: string, ...args: string[]): Promise<string> {
+  const { stdout, stderr, exitCode } = await exec("git", args, { cwd });
+  if (exitCode !== 0) throw new Error(`git ${args[0]} failed: ${stderr.trim()}`);
+  return stdout.trim();
 }
 
 export async function runDemo(provider: string, model?: string): Promise<number> {

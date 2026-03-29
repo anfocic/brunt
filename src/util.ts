@@ -1,4 +1,21 @@
+import { execFile } from "node:child_process";
 import type { Finding } from "./vectors/types.ts";
+
+export function exec(
+  cmd: string,
+  args: string[],
+  opts?: { cwd?: string; timeout?: number; maxBuffer?: number }
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { ...opts, encoding: "utf-8" }, (error, stdout, stderr) => {
+      resolve({
+        stdout: stdout ?? "",
+        stderr: stderr ?? "",
+        exitCode: error ? 1 : 0,
+      });
+    });
+  });
+}
 
 export async function pMap<T, R>(
   items: T[],
@@ -24,7 +41,7 @@ export async function pMap<T, R>(
 }
 
 export function findingKey(f: Finding): string {
-  return `${f.file}:${f.line}`;
+  return `${f.file}:${f.line}:${f.title}`;
 }
 
 export function tokenize(text: string): Set<string> {

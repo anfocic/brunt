@@ -1,7 +1,6 @@
 import { writeFile, readFile, chmod, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { execFile } from "node:child_process";
+import { exec } from "./util.ts";
 
 const HOOK_MARKER = "# brunt pre-push hook";
 
@@ -33,35 +32,30 @@ if [ $EXIT_CODE -ne 0 ]; then
 fi
 `;
 
-function getGitDir(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile("git", ["rev-parse", "--git-dir"], (error, stdout) => {
-      if (error) {
-        reject(new Error("Not a git repository."));
-        return;
-      }
-      resolve((stdout ?? "").trim());
-    });
-  });
+async function getGitDir(): Promise<string> {
+  const { stdout, exitCode } = await exec("git", ["rev-parse", "--git-dir"]);
+  if (exitCode !== 0) throw new Error("Not a git repository.");
+  return stdout.trim();
 }
 
 export async function init(): Promise<void> {
   const gitDir = await getGitDir();
   const hooksDir = join(gitDir, "hooks");
 
-  if (!existsSync(hooksDir)) {
-    await mkdir(hooksDir, { recursive: true });
-  }
+  await mkdir(hooksDir, { recursive: true });
 
   const hookPath = join(hooksDir, "pre-push");
 
-  if (existsSync(hookPath)) {
-    const existing = await readFile(hookPath, "utf-8");
+  let existing: string | null = null;
+  try {
+    existing = await readFile(hookPath, "utf-8");
+  } catch {}
+
+  if (existing !== null) {
     if (existing.includes(HOOK_MARKER)) {
       console.log("brunt pre-push hook is already installed.");
       return;
     }
-    // Append to existing hook
     const appended = existing.trimEnd() + "\n\n" + HOOK_SCRIPT;
     await writeFile(hookPath, appended, "utf-8");
     console.log("brunt pre-push hook appended to existing hook.");
