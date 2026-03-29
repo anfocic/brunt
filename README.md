@@ -12,7 +12,7 @@ No opinions -- just proof.
 ## Quick Start
 
 ```bash
-npm i -g brunt-cli
+npm i -g @fole/brunt
 
 # See it in action instantly (no setup needed)
 brunt demo

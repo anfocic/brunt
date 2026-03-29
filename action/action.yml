@@ -43,7 +43,7 @@ runs:
   steps:
     - name: Install Brunt
       shell: bash
-      run: npm i -g brunt-cli
+      run: npm i -g @fole/brunt
 
     - name: Run Brunt
       shell: bash
