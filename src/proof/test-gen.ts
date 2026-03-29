@@ -47,11 +47,13 @@ async function detectFramework(): Promise<TestFramework> {
     },
   ];
 
-  for (const check of checks) {
-    if (await fileExists(check.file)) {
-      return check.framework;
-    }
-  }
+  const results = await Promise.all(checks.map(async (check) => ({
+    exists: await fileExists(check.file),
+    framework: check.framework,
+  })));
+
+  const match = results.find((r) => r.exists);
+  if (match) return match.framework;
 
   try {
     const raw = await readFile("package.json", "utf-8");
@@ -85,8 +87,6 @@ Requirements:
 
 Respond with ONLY the test file content, no markdown fences, no explanation.`;
 }
-
-export { cleanLlmResponse as cleanLlmOutput } from "../util.ts";
 
 export type GeneratedTest = {
   finding: Finding;
@@ -128,8 +128,6 @@ export async function generateTests(
 
   return results.filter((r): r is GeneratedTest => r !== null);
 }
-
-export { pMap } from "../util.ts";
 
 export async function writeTests(tests: GeneratedTest[]): Promise<void> {
   for (const test of tests) {

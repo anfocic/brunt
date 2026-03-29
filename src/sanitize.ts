@@ -107,32 +107,22 @@ function stripHtmlComments(text: string): string {
   return text.replace(/<!--[\s\S]*?-->/g, "");
 }
 
+function stripLines(lines: string[], language: string): string[] {
+  return lines.map((line) => {
+    let cleaned = stripLineComments(line, language);
+    cleaned = stripBlockComments(cleaned);
+    cleaned = stripHtmlComments(cleaned);
+    return cleaned;
+  }).filter((line) => line.trim().length > 0);
+}
+
 export function sanitizeDiff(files: DiffFile[]): DiffFile[] {
   return files.map((file) => ({
     ...file,
-    hunks: file.hunks.map((hunk) => {
-      const cleanAdded = hunk.added.map((line) => {
-        let cleaned = stripLineComments(line, file.language);
-        cleaned = stripBlockComments(cleaned);
-        cleaned = stripHtmlComments(cleaned);
-        return cleaned;
-      }).filter((line) => line.trim().length > 0);
-
-      const cleanRemoved = hunk.removed.map((line) => {
-        let cleaned = stripLineComments(line, file.language);
-        cleaned = stripBlockComments(cleaned);
-        cleaned = stripHtmlComments(cleaned);
-        return cleaned;
-      }).filter((line) => line.trim().length > 0);
-
-      const cleanContext = hunk.context.map((line) => {
-        let cleaned = stripLineComments(line, file.language);
-        cleaned = stripBlockComments(cleaned);
-        cleaned = stripHtmlComments(cleaned);
-        return cleaned;
-      }).filter((line) => line.trim().length > 0);
-
-      return { added: cleanAdded, removed: cleanRemoved, context: cleanContext };
-    }),
+    hunks: file.hunks.map((hunk) => ({
+      added: stripLines(hunk.added, file.language),
+      removed: stripLines(hunk.removed, file.language),
+      context: stripLines(hunk.context, file.language),
+    })),
   }));
 }

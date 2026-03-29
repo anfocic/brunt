@@ -82,7 +82,11 @@ async function rollbackFix(filePath: string, originalContent: string): Promise<v
   await writeFile(filePath, originalContent, "utf-8");
 }
 
+let cachedTestRunner: { cmd: string; args: string[] } | undefined;
+
 function detectTestRunner(): { cmd: string; args: string[] } {
+  if (cachedTestRunner) return cachedTestRunner;
+
   const which = (cmd: string): boolean => {
     try {
       execFileSync("which", [cmd], { stdio: "ignore" });
@@ -92,10 +96,17 @@ function detectTestRunner(): { cmd: string; args: string[] } {
     }
   };
   try {
-    if (which("bun")) return { cmd: "bun", args: ["test"] };
-    if (which("npx")) return { cmd: "npx", args: ["vitest", "run"] };
+    if (which("bun")) {
+      cachedTestRunner = { cmd: "bun", args: ["test"] };
+      return cachedTestRunner;
+    }
+    if (which("npx")) {
+      cachedTestRunner = { cmd: "npx", args: ["vitest", "run"] };
+      return cachedTestRunner;
+    }
   } catch {}
-  return { cmd: "node", args: ["--test"] };
+  cachedTestRunner = { cmd: "node", args: ["--test"] };
+  return cachedTestRunner;
 }
 
 async function verifyFix(testFilePath: string): Promise<{ passed: boolean; output: string }> {
@@ -113,8 +124,6 @@ async function verifyFix(testFilePath: string): Promise<{ passed: boolean; outpu
     );
   });
 }
-
-export { generateDiff } from "../diff-gen.ts";
 
 export async function fixAndVerify(
   finding: Finding,

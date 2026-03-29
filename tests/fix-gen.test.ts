@@ -48,7 +48,6 @@ describe("generateDiff", () => {
 describe("fix-gen exports", () => {
   test("module exports expected functions", async () => {
     const mod = await import("../src/fix/fix-gen.ts");
-    expect(typeof mod.generateDiff).toBe("function");
     expect(typeof mod.fixAndVerify).toBe("function");
     expect(typeof mod.fixAll).toBe("function");
   });

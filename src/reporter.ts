@@ -108,7 +108,7 @@ function formatInlineDiff(diff: string): string {
 
 function formatDashboard(report: ScanReport, fixes: FixVerification[]): string {
   const allFindings = report.vectors.flatMap((v) => v.findings);
-  const counts: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0 };
+  const counts = { critical: 0, high: 0, medium: 0, low: 0 };
   for (const f of allFindings) counts[f.severity]++;
 
   const verified = fixes.filter((f) => f.status === "verified").length;
@@ -150,6 +150,11 @@ function sarifLevel(severity: Severity): "error" | "warning" | "note" {
 }
 
 export function formatSarif(report: ScanReport, tests: GeneratedTest[]): string {
+  const testMap = new Map<string, GeneratedTest>();
+  for (const t of tests) {
+    testMap.set(findingKey(t.finding), t);
+  }
+
   const runs = report.vectors.map((vector) => ({
     tool: {
       driver: {
@@ -166,9 +171,7 @@ export function formatSarif(report: ScanReport, tests: GeneratedTest[]): string 
       },
     },
     results: vector.findings.map((f) => {
-      const test = tests.find(
-        (t) => t.finding.file === f.file && t.finding.line === f.line
-      );
+      const test = testMap.get(findingKey(f));
       return {
         ruleId: findingId(vector.name, f),
         level: sarifLevel(f.severity),
@@ -205,6 +208,11 @@ export function formatSarif(report: ScanReport, tests: GeneratedTest[]): string 
 }
 
 export function formatJson(report: ScanReport, tests: GeneratedTest[], fixes: FixVerification[] = []): string {
+  const testMap = new Map<string, GeneratedTest>();
+  for (const t of tests) {
+    testMap.set(findingKey(t.finding), t);
+  }
+
   const fixMap = new Map<string, FixVerification>();
   for (const f of fixes) {
     fixMap.set(findingKey(f.finding), f);
@@ -214,9 +222,7 @@ export function formatJson(report: ScanReport, tests: GeneratedTest[], fixes: Fi
     name: v.name,
     duration: v.duration,
     findings: v.findings.map((f) => {
-      const test = tests.find(
-        (t) => t.finding.file === f.file && t.finding.line === f.line
-      );
+      const test = testMap.get(findingKey(f));
       const fix = fixMap.get(findingKey(f));
       return {
         ...f,
