@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { pMap } from "../src/proof/test-gen.ts";
+import { pMap } from "../src/util.ts";
 
 describe("pMap", () => {
   test("processes all items and preserves order", async () => {

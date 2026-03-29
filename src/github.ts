@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { exec } from "./util.ts";
 import type { Finding, VectorReport } from "./vectors/types.ts";
 
 type ReviewComment = {
@@ -108,16 +108,10 @@ export async function postPrReview(
   );
 }
 
-export function getHeadSha(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile("git", ["rev-parse", "HEAD"], (error, stdout) => {
-      if (error) {
-        reject(new Error("Failed to get HEAD SHA."));
-        return;
-      }
-      resolve((stdout ?? "").trim());
-    });
-  });
+export async function getHeadSha(): Promise<string> {
+  const { stdout, exitCode } = await exec("git", ["rev-parse", "HEAD"]);
+  if (exitCode !== 0) throw new Error("Failed to get HEAD SHA.");
+  return stdout.trim();
 }
 
 export { buildCommentBody, buildReviewBody };

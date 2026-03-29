@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { cleanLlmOutput } from "../src/proof/test-gen.ts";
+import { cleanLlmResponse as cleanLlmOutput } from "../src/util.ts";
 
 describe("cleanLlmOutput", () => {
   test("returns clean code as-is", () => {

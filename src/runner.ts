@@ -1,7 +1,5 @@
 import type { Args } from "./cli.ts";
 import { getDiff } from "./diff.ts";
-import { loadContext } from "./context.ts";
-import { sanitizeDiff } from "./sanitize.ts";
 import { getVectors } from "./vectors/registry.ts";
 import type { VectorReport, ScanReport } from "./vectors/types.ts";
 import { generateTests, writeTests } from "./proof/test-gen.ts";
@@ -17,7 +15,7 @@ import { createFixPr } from "./fix/pr.ts";
 import { Spinner, ProgressBoard, printBanner } from "./tui.ts";
 import { runInteractive } from "./interactive.ts";
 import { buildConsensus } from "./consensus.ts";
-import { scanEngine } from "./engine.ts";
+import { scanEngine, type ProgressEvent } from "./engine.ts";
 import { readBaseline, filterByBaseline } from "./baseline.ts";
 
 export function getProvider(name: string, options: ProviderOptions = {}): Provider {
@@ -72,28 +70,24 @@ export async function run(args: Args): Promise<number> {
       providerName: args.provider,
       model: args.model,
     },
-    (event, detail) => {
-      switch (event) {
+    (event: ProgressEvent) => {
+      switch (event.type) {
         case "cache-hit":
           spinner.start("Cache hit — skipping LLM analysis.");
           spinner.succeed("Cache hit — loaded previous results.");
           break;
         case "vectors-start":
-          process.stderr.write(`\n  Running ${detail} vector${detail === "1" ? "" : "s"} via ${provider.name}:\n\n`);
+          process.stderr.write(`\n  Running ${event.total} vector${event.total === 1 ? "" : "s"} via ${provider.name}:\n\n`);
           for (const v of vectors) board.update(v.name, "running");
           boardStarted = true;
           break;
-        case "vector-done": {
-          const [name, count, dur] = detail!.split(":");
-          board.update(name!, "done", `${count} finding${count === "1" ? "" : "s"}`, parseInt(dur!));
+        case "vector-done":
+          board.update(event.name, "done", `${event.count} finding${event.count === 1 ? "" : "s"}`, event.duration);
           break;
-        }
-        case "vector-failed": {
-          const [name, msg] = detail!.split(":", 2);
-          board.update(name!, "failed", msg);
-          console.error(`WARNING: Vector "${name}" failed: ${msg}`);
+        case "vector-failed":
+          board.update(event.name, "failed", event.message);
+          console.error(`WARNING: Vector "${event.name}" failed: ${event.message}`);
           break;
-        }
         case "canary-missed":
           console.error("WARNING: Canary bug was not detected. Analysis may have been compromised by prompt injection.");
           console.error("         Results may be unreliable. Review the diff manually.");
@@ -227,26 +221,25 @@ async function runConsensus(
   const reportsByModel = new Map<string, VectorReport[]>();
   reportsByModel.set(args.provider, primaryReports);
 
-  const sanitizedFiles = sanitizeDiff(files);
-  const context = await loadContext(files);
-
-  for (const provName of providerNames) {
-    try {
+  const results = await Promise.allSettled(
+    providerNames.map(async (provName) => {
       const altProvider = getProvider(provName, { maxTokens: args.maxTokens });
+      const { vectorReports } = await scanEngine({
+        files,
+        vectors,
+        provider: altProvider,
+        noCache: true,
+        providerName: provName,
+      });
+      return { provName, vectorReports };
+    })
+  );
 
-      const altSettled = await Promise.allSettled(
-        vectors.map(async (vector) => {
-          const findings = await vector.analyze(sanitizedFiles, context, altProvider);
-          return { name: vector.name, findings, duration: 0 };
-        })
-      );
-
-      const altReports: VectorReport[] = altSettled.map((r, idx) =>
-        r.status === "fulfilled" ? r.value : { name: vectors[idx]!.name, findings: [], duration: 0 }
-      );
-      reportsByModel.set(provName, altReports);
-    } catch (err) {
-      console.error(`WARNING: Consensus provider "${provName}" failed: ${err instanceof Error ? err.message : String(err)}`);
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      reportsByModel.set(result.value.provName, result.value.vectorReports);
+    } else {
+      console.error(`WARNING: Consensus provider failed: ${result.reason?.message ?? String(result.reason)}`);
     }
   }
 

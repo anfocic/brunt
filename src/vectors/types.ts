@@ -1,4 +1,5 @@
 import type { DiffFile } from "../diff.ts";
+export type { DiffFile };
 import type { Provider } from "../providers/types.ts";
 
 export type Severity = "low" | "medium" | "high" | "critical";

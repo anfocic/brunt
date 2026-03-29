@@ -95,7 +95,7 @@ function computeLcs(a: string[], b: string[]): Array<[number, number]> {
 
   if (m === 0 || n === 0) return [];
 
-  const full = new Uint16Array((m + 1) * (n + 1));
+  const full = new Uint32Array((m + 1) * (n + 1));
   for (let ii = 1; ii <= m; ii++) {
     for (let jj = 1; jj <= n; jj++) {
       if (a[ii - 1] === b[jj - 1]) {

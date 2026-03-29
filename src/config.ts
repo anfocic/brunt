@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { exec } from "./util.ts";
 
 export type BruntConfig = {
   provider?: string;
@@ -100,16 +100,10 @@ function castValue(raw: string): string | boolean {
   return trimmed.replace(/^(["'])(.+)\1$/, "$2");
 }
 
-function getGitRoot(): Promise<string | null> {
-  return new Promise((resolve) => {
-    execFile("git", ["rev-parse", "--show-toplevel"], (error, stdout) => {
-      if (error) {
-        resolve(null);
-        return;
-      }
-      resolve((stdout ?? "").trim());
-    });
-  });
+async function getGitRoot(): Promise<string | null> {
+  const { stdout, exitCode } = await exec("git", ["rev-parse", "--show-toplevel"]);
+  if (exitCode !== 0) return null;
+  return stdout.trim();
 }
 
 function findConfigFile(startDir: string, stopDir: string | null): string | null {
@@ -137,29 +131,33 @@ export async function loadConfig(cwd?: string): Promise<BruntConfig> {
   return mapToConfig(parsed);
 }
 
-const VALID_PROVIDERS = new Set(["claude-cli", "anthropic", "ollama"]);
-const VALID_FORMATS = new Set(["text", "json", "sarif"]);
-const VALID_SEVERITIES = new Set(["low", "medium", "high", "critical"]);
+export const VALID_PROVIDERS: string[] = ["claude-cli", "anthropic", "ollama"];
+export const VALID_FORMATS: string[] = ["text", "json", "sarif"];
+export const VALID_SEVERITIES: string[] = ["low", "medium", "high", "critical"];
+
+const PROVIDER_SET = new Set<string>(VALID_PROVIDERS);
+const FORMAT_SET = new Set<string>(VALID_FORMATS);
+const SEVERITY_SET = new Set<string>(VALID_SEVERITIES);
 
 function mapToConfig(raw: Record<string, unknown>): BruntConfig {
   const config: BruntConfig = {};
 
   if (typeof raw.provider === "string") {
-    if (!VALID_PROVIDERS.has(raw.provider)) {
-      throw new Error(`Invalid provider in config: "${raw.provider}". Use ${[...VALID_PROVIDERS].join(", ")}.`);
+    if (!PROVIDER_SET.has(raw.provider)) {
+      throw new Error(`Invalid provider in config: "${raw.provider}". Use ${VALID_PROVIDERS.join(", ")}.`);
     }
     config.provider = raw.provider;
   }
   if (typeof raw.model === "string") config.model = raw.model;
   if (typeof raw.format === "string") {
-    if (!VALID_FORMATS.has(raw.format)) {
-      throw new Error(`Invalid format in config: "${raw.format}". Use ${[...VALID_FORMATS].join(", ")}.`);
+    if (!FORMAT_SET.has(raw.format)) {
+      throw new Error(`Invalid format in config: "${raw.format}". Use ${VALID_FORMATS.join(", ")}.`);
     }
     config.format = raw.format;
   }
   if (typeof raw.failOn === "string") {
-    if (!VALID_SEVERITIES.has(raw.failOn)) {
-      throw new Error(`Invalid failOn in config: "${raw.failOn}". Use ${[...VALID_SEVERITIES].join(", ")}.`);
+    if (!SEVERITY_SET.has(raw.failOn)) {
+      throw new Error(`Invalid failOn in config: "${raw.failOn}". Use ${VALID_SEVERITIES.join(", ")}.`);
     }
     config.failOn = raw.failOn;
   }

@@ -20,7 +20,15 @@ export type ScanResult = {
   fromCache: boolean;
 };
 
-export type ProgressCallback = (event: string, detail?: string) => void;
+export type ProgressEvent =
+  | { type: "cache-hit" }
+  | { type: "vectors-start"; total: number }
+  | { type: "vector-done"; name: string; count: number; duration: number }
+  | { type: "vector-failed"; name: string; message: string }
+  | { type: "canary-missed" }
+  | { type: "canary-failed" };
+
+export type ProgressCallback = (event: ProgressEvent) => void;
 
 export async function scanEngine(
   input: ScanInput,
@@ -34,7 +42,7 @@ export async function scanEngine(
   if (!noCache) {
     const cached = await readCache(cacheKey);
     if (cached) {
-      onProgress?.("cache-hit");
+      onProgress?.({ type: "cache-hit" });
       return { vectorReports: cached, canaryVerified: true, fromCache: true };
     }
   }
@@ -43,14 +51,14 @@ export async function scanEngine(
   const { files: filesWithCanary, canary } = injectCanary(sanitizedFiles);
   const context = await loadContext(files);
 
-  onProgress?.("vectors-start", `${vectors.length}`);
+  onProgress?.({ type: "vectors-start", total: vectors.length });
 
   const settled = await Promise.allSettled(
     vectors.map(async (vector) => {
       const start = performance.now();
       const findings = await vector.analyze(filesWithCanary, context, provider);
       const duration = Math.round(performance.now() - start);
-      onProgress?.("vector-done", `${vector.name}:${findings.length}:${duration}`);
+      onProgress?.({ type: "vector-done", name: vector.name, count: findings.length, duration });
       return { name: vector.name, findings, duration };
     })
   );
@@ -61,7 +69,7 @@ export async function scanEngine(
     if (result.status === "fulfilled") {
       vectorReports.push(result.value);
     } else {
-      onProgress?.("vector-failed", `${vectors[i]!.name}:${result.reason?.message ?? String(result.reason)}`);
+      onProgress?.({ type: "vector-failed", name: vectors[i]!.name, message: result.reason?.message ?? String(result.reason) });
       vectorReports.push({ name: vectors[i]!.name, findings: [], duration: 0 });
     }
   }
@@ -71,12 +79,12 @@ export async function scanEngine(
   let canaryVerified = false;
 
   if (!canaryFound) {
-    onProgress?.("canary-missed");
+    onProgress?.({ type: "canary-missed" });
   } else {
     const llmVerified = await verifyCanaryWithLlm(canary, allRawFindings, provider);
     canaryVerified = !!llmVerified;
     if (!llmVerified) {
-      onProgress?.("canary-failed");
+      onProgress?.({ type: "canary-failed" });
     }
   }
 

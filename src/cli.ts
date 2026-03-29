@@ -2,7 +2,7 @@
 
 import { run } from "./runner.ts";
 import { listVectors } from "./vectors/registry.ts";
-import { loadConfig, type BruntConfig } from "./config.ts";
+import { loadConfig, VALID_PROVIDERS, VALID_FORMATS, VALID_SEVERITIES, type BruntConfig } from "./config.ts";
 import { init } from "./init.ts";
 import { runDemo } from "./demo.ts";
 import { readBaseline, writeBaseline, buildBaselineEntries, clearBaseline } from "./baseline.ts";
@@ -36,36 +36,13 @@ export type Args = {
   noBaseline: boolean;
 };
 
-type PartialArgs = {
-  command: string;
-  diff?: string;
-  provider?: string;
-  format?: "text" | "json" | "sarif";
-  failOn?: "low" | "medium" | "high" | "critical";
-  vectors?: string[];
-  noTests?: boolean;
-  noCache?: boolean;
-  prComment?: boolean;
-  maxTokens?: number;
-  model?: string;
-  fix?: boolean;
-  fixRetries?: number;
-  interactive?: boolean;
-  pr?: boolean;
-  consensus?: boolean;
-  consensusProviders?: string[];
-  noBaseline?: boolean;
-};
+type PartialArgs = { command: string } & Partial<Omit<Args, "command">>;
 
 function detectDefaultDiff(): string {
   const baseRef = process.env.GITHUB_BASE_REF;
   if (baseRef) return `origin/${baseRef}..HEAD`;
   return "HEAD~1";
 }
-
-const VALID_PROVIDERS = ["claude-cli", "anthropic", "ollama"];
-const VALID_FORMATS = ["text", "json", "sarif"];
-const VALID_SEVERITIES = ["low", "medium", "high", "critical"];
 
 function parseArgs(argv: string[]): PartialArgs {
   const args = argv.slice(2);
@@ -158,6 +135,9 @@ function parseArgs(argv: string[]): PartialArgs {
       }
       fixRetries = n;
       i++;
+    } else if (arg === "--help" || arg === "-h") {
+      printHelp();
+      process.exit(0);
     } else if (arg?.startsWith("--")) {
       throw new Error(`Unknown flag: ${arg}. Run "brunt help" for usage.`);
     }
@@ -287,10 +267,9 @@ async function handleBaseline(subArgs: string[], partial: PartialArgs) {
 
     const { vectorReports } = await scanEngine(
       { files, vectors, provider, noCache: true, providerName: args.provider, model: args.model },
-      (event, detail) => {
-        if (event === "vector-done") {
-          const [name, count, dur] = detail!.split(":");
-          console.error(`  ${name}: ${count} finding${count === "1" ? "" : "s"} (${dur}ms)`);
+      (event) => {
+        if (event.type === "vector-done") {
+          console.error(`  ${event.name}: ${event.count} finding${event.count === 1 ? "" : "s"} (${event.duration}ms)`);
         }
       }
     );
