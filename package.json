@@ -4,11 +4,21 @@
   "description": "Adversarial AI code review. Finds bugs, generates failing tests as proof.",
   "license": "MIT",
   "type": "module",
+  "author": "anfocic",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anfocic/brunt.git"
+  },
+  "homepage": "https://github.com/anfocic/brunt",
+  "bugs": {
+    "url": "https://github.com/anfocic/brunt/issues"
+  },
   "bin": {
     "brunt": "dist/cli.js"
   },
   "files": [
     "dist",
+    "action",
     "LICENSE",
     "README.md"
   ],
@@ -19,7 +29,10 @@
     "testing",
     "cli",
     "adversarial",
-    "static-analysis"
+    "static-analysis",
+    "llm",
+    "code-quality",
+    "github-actions"
   ],
   "engines": {
     "node": ">=18"
@@ -31,7 +44,7 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/bun": "^1.3.11",
     "@types/node": "^22"
   }
 }
