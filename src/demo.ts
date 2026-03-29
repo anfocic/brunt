@@ -53,14 +53,16 @@ export async function runDemo(provider: string, model?: string): Promise<number>
     await git(dir, "init");
     await git(dir, "config", "user.email", "demo@brunt.dev");
     await git(dir, "config", "user.name", "brunt-demo");
-    await writeFile(join(dir, "shopping-cart.ts"), DEMO_SOURCE, "utf-8");
     await writeFile(
       join(dir, "package.json"),
       JSON.stringify({ name: "brunt-demo", type: "module", devDependencies: {} }, null, 2),
       "utf-8"
     );
     await git(dir, "add", ".");
-    await git(dir, "commit", "-m", "initial commit with buggy code");
+    await git(dir, "commit", "-m", "init");
+    await writeFile(join(dir, "shopping-cart.ts"), DEMO_SOURCE, "utf-8");
+    await git(dir, "add", "shopping-cart.ts");
+    await git(dir, "commit", "-m", "add buggy shopping cart");
 
     console.error("Demo file: shopping-cart.ts");
     console.error("Bugs planted: off-by-one loop, SQL injection, negative refund exploit\n");

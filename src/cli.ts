@@ -135,6 +135,9 @@ function parseArgs(argv: string[]): PartialArgs {
       }
       fixRetries = n;
       i++;
+    } else if (arg === "--help" || arg === "-h") {
+      printHelp();
+      process.exit(0);
     } else if (arg?.startsWith("--")) {
       throw new Error(`Unknown flag: ${arg}. Run "brunt help" for usage.`);
     }
