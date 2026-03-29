@@ -41,7 +41,7 @@ export async function pMap<T, R>(
 }
 
 export function findingKey(f: Finding): string {
-  return `${f.file}:${f.line}:${f.title}`;
+  return `${f.file}\0${f.line}\0${f.title}`;
 }
 
 export function tokenize(text: string): Set<string> {
