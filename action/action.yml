@@ -1,0 +1,88 @@
+name: 'Brunt Review'
+description: 'Adversarial AI code review. Finds bugs, generates failing tests as proof.'
+branding:
+  icon: 'shield'
+  color: 'red'
+
+inputs:
+  vectors:
+    description: 'Comma-separated vectors to run (default: all)'
+    required: false
+    default: ''
+  fail-on:
+    description: 'Fail at this severity: low, medium, high, critical'
+    required: false
+    default: 'critical'
+  provider:
+    description: 'LLM provider: anthropic, ollama, claude-cli'
+    required: false
+    default: 'anthropic'
+  model:
+    description: 'Model name (e.g. claude-sonnet-4-6-20250514, llama3)'
+    required: false
+    default: ''
+  format:
+    description: 'Output format: text, json, sarif'
+    required: false
+    default: 'text'
+  generate-tests:
+    description: 'Generate proof test files'
+    required: false
+    default: 'false'
+  pr-comment:
+    description: 'Post findings as inline PR review comments'
+    required: false
+    default: 'false'
+  sarif-upload:
+    description: 'Upload SARIF results to GitHub Code Scanning'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Brunt
+      shell: bash
+      run: npm i -g @fole/brunt
+
+    - name: Run Brunt
+      shell: bash
+      env:
+        BRUNT_PROVIDER: ${{ inputs.provider }}
+        BRUNT_FAIL_ON: ${{ inputs.fail-on }}
+        BRUNT_VECTORS: ${{ inputs.vectors }}
+        BRUNT_MODEL: ${{ inputs.model }}
+        BRUNT_FORMAT: ${{ inputs.format }}
+        BRUNT_GENERATE_TESTS: ${{ inputs.generate-tests }}
+        BRUNT_PR_COMMENT: ${{ inputs.pr-comment }}
+        BRUNT_SARIF_UPLOAD: ${{ inputs.sarif-upload }}
+        GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        ARGS="--provider ${BRUNT_PROVIDER} --fail-on ${BRUNT_FAIL_ON}"
+
+        if [ -n "${BRUNT_VECTORS}" ]; then
+          ARGS="${ARGS} --vectors ${BRUNT_VECTORS}"
+        fi
+        if [ -n "${BRUNT_MODEL}" ]; then
+          ARGS="${ARGS} --model ${BRUNT_MODEL}"
+        fi
+        if [ "${BRUNT_GENERATE_TESTS}" != "true" ]; then
+          ARGS="${ARGS} --no-tests"
+        fi
+        if [ "${BRUNT_PR_COMMENT}" = "true" ]; then
+          ARGS="${ARGS} --pr-comment"
+        fi
+
+        if [ "${BRUNT_SARIF_UPLOAD}" = "true" ]; then
+          brunt scan ${ARGS} --format sarif > brunt-results.sarif 2>/dev/null || true
+          brunt scan ${ARGS} --format ${BRUNT_FORMAT}
+        else
+          brunt scan ${ARGS} --format ${BRUNT_FORMAT}
+        fi
+
+    - name: Upload SARIF
+      if: ${{ inputs.sarif-upload == 'true' && always() }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: brunt-results.sarif
+        category: brunt
