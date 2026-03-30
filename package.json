@@ -1,0 +1,59 @@
+{
+  "name": "@fole/brunt",
+  "version": "0.4.0",
+  "description": "Adversarial AI code review. Finds bugs, generates failing tests as proof.",
+  "license": "MIT",
+  "type": "module",
+  "author": "anfocic",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anfocic/brunt.git"
+  },
+  "homepage": "https://github.com/anfocic/brunt",
+  "bugs": {
+    "url": "https://github.com/anfocic/brunt/issues"
+  },
+  "bin": {
+    "brunt": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "action",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "code-review",
+    "ai",
+    "security",
+    "testing",
+    "cli",
+    "adversarial",
+    "static-analysis",
+    "llm",
+    "code-quality",
+    "github-actions"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "workspaces": [
+    "packages/llm",
+    "packages/devkit"
+  ],
+  "scripts": {
+    "build:packages": "npm run build -w packages/llm && npm run build -w packages/devkit",
+    "build": "npm run build:packages && tsc",
+    "bundle": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/cli.js",
+    "prepublishOnly": "npm run bundle",
+    "test": "npm run build && node --test dist/tests/**/*.test.js",
+    "clean": "rm -rf dist packages/llm/dist packages/devkit/dist"
+  },
+  "devDependencies": {
+    "@packages/devkit": "*",
+    "@packages/llm": "*",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  }
+}
