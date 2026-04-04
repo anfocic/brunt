@@ -94,6 +94,32 @@ export type GeneratedTest = {
   content: string;
 };
 
+/**
+ * Static validation of a generated test — the "watchman" check.
+ * Catches obvious LLM hallucinations without running the test.
+ */
+function validateGeneratedTest(test: string, finding: Finding): string | null {
+  // Must contain an import/require referencing the finding's file (or a close derivative)
+  const fileBase = finding.file.replace(/\.[^.]+$/, "").split("/").pop() ?? "";
+  const hasImport = /\bimport\b|require\(/.test(test);
+  if (!hasImport) {
+    return "no import statement — test doesn't reference any module";
+  }
+
+  // Must contain an assertion or expect call
+  const hasAssertion = /\bassert\b|\bexpect\b|\bshould\b|\.to\b|\.toBe|\.toEqual|\.toThrow|\.rejects|strictEqual|deepEqual|throws/.test(test);
+  if (!hasAssertion) {
+    return "no assertion — test doesn't verify anything";
+  }
+
+  // Should reference the file under test (by filename or a symbol from it)
+  const refsFile = test.includes(fileBase) || test.includes(finding.file);
+  if (!refsFile) {
+    return `test doesn't reference the target file "${fileBase}"`;
+  }
+
+  return null; // valid
+}
 
 export async function generateTests(
   findings: Finding[],
@@ -111,6 +137,13 @@ export async function generateTests(
 
       if (!cleaned) {
         console.error(`Warning: failed to generate test for ${finding.file}:${finding.line}, skipping.`);
+        return null;
+      }
+
+      // Static validation — reject tests that are obviously wrong
+      const validationError = validateGeneratedTest(cleaned, finding);
+      if (validationError) {
+        console.error(`Warning: dropping test for ${finding.file}:${finding.line}: ${validationError}`);
         return null;
       }
 

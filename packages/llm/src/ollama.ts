@@ -4,6 +4,12 @@ const DEFAULT_HOST = "http://localhost:11434";
 const DEFAULT_MODEL = "llama3";
 const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_TIMEOUT_MS = 300_000;
+const MAX_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 1000;
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export class OllamaProvider implements Provider {
   readonly name = "ollama";
@@ -33,51 +39,76 @@ export class OllamaProvider implements Provider {
     const timer = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      const response = await fetch(`${this.host}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: this.model,
-          messages,
-          stream: false,
-          options: { num_predict: this.maxTokens },
-        }),
-        signal: controller.signal,
-      });
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        let response: Response;
+        try {
+          response = await fetch(`${this.host}/api/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: this.model,
+              messages,
+              stream: false,
+              options: { num_predict: this.maxTokens },
+            }),
+            signal: controller.signal,
+          });
+        } catch (err: unknown) {
+          if (err instanceof Error && err.name === "AbortError") {
+            throw new Error(`Ollama timed out after ${this.timeout / 1000}s`);
+          }
+          if (attempt < MAX_RETRIES) {
+            await sleep(INITIAL_BACKOFF_MS * Math.pow(2, attempt));
+            continue;
+          }
+          if (
+            err instanceof TypeError &&
+            (err.message.includes("fetch") || err.message.includes("ECONNREFUSED"))
+          ) {
+            throw new Error(
+              `Cannot connect to Ollama at ${this.host}. Is Ollama running? Start it with: ollama serve`
+            );
+          }
+          throw err;
+        }
 
-      if (!response.ok) {
-        const body = await response.text();
-        throw new Error(`Ollama API error (${response.status}): ${body}`);
+        if (response.status === 429 || response.status >= 500) {
+          if (attempt < MAX_RETRIES) {
+            await sleep(INITIAL_BACKOFF_MS * Math.pow(2, attempt));
+            continue;
+          }
+          const body = await response.text();
+          throw new Error(`Ollama API error (${response.status}): ${body}`);
+        }
+
+        if (!response.ok) {
+          const body = await response.text();
+          throw new Error(`Ollama API error (${response.status}): ${body}`);
+        }
+
+        const data = (await response.json()) as {
+          message?: { content?: string };
+          prompt_eval_count?: number;
+          eval_count?: number;
+        };
+        const text = data.message?.content ?? "";
+        if (!text) {
+          throw new Error("No response content from Ollama API.");
+        }
+
+        return {
+          text,
+          usage: {
+            input_tokens: data.prompt_eval_count ?? 0,
+            output_tokens: data.eval_count ?? 0,
+          },
+        };
       }
 
-      const data = (await response.json()) as {
-        message?: { content?: string };
-        prompt_eval_count?: number;
-        eval_count?: number;
-      };
-      const text = data.message?.content ?? "";
-      if (!text) {
-        throw new Error("No response content from Ollama API.");
-      }
-
-      return {
-        text,
-        usage: {
-          input_tokens: data.prompt_eval_count ?? 0,
-          output_tokens: data.eval_count ?? 0,
-        },
-      };
+      throw new Error("Ollama: max retries exceeded");
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "AbortError") {
         throw new Error(`Ollama timed out after ${this.timeout / 1000}s`);
-      }
-      if (
-        err instanceof TypeError &&
-        (err.message.includes("fetch") || err.message.includes("ECONNREFUSED"))
-      ) {
-        throw new Error(
-          `Cannot connect to Ollama at ${this.host}. Is Ollama running? Start it with: ollama serve`
-        );
       }
       throw err;
     } finally {
