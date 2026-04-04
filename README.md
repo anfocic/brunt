@@ -81,10 +81,26 @@ brunt scan --vectors security   # run only security
 | `ollama` | Free, local | Install Ollama, run `ollama serve` |
 | `openai` | Pay per token | Set `OPENAI_API_KEY` |
 
+Any server that speaks the OpenAI chat completions protocol works with `--provider openai`:
+
+| Server | Setup |
+|---|---|
+| LM Studio | `OPENAI_BASE_URL=http://localhost:1234/v1` |
+| llama.cpp | `OPENAI_BASE_URL=http://localhost:8080/v1` |
+| vLLM | `OPENAI_BASE_URL=http://localhost:8000/v1` |
+| LocalAI | `OPENAI_BASE_URL=http://localhost:8080/v1` |
+| Together AI | `OPENAI_BASE_URL=https://api.together.xyz/v1` + `OPENAI_API_KEY` |
+| Groq | `OPENAI_BASE_URL=https://api.groq.com/openai/v1` + `OPENAI_API_KEY` |
+
 ```bash
 brunt scan                                                # Claude Code CLI (default)
 ANTHROPIC_API_KEY=sk-... brunt scan --provider anthropic  # Anthropic API
-brunt scan --provider ollama --model llama3                # Local model
+brunt scan --provider ollama --model llama3                # Ollama (local)
+OPENAI_API_KEY=sk-... brunt scan --provider openai        # OpenAI API
+
+# Any OpenAI-compatible server (no API key needed for local)
+OPENAI_BASE_URL=http://localhost:1234/v1 \
+  brunt scan --provider openai --model my-local-model
 ```
 
 ## Prompt Injection Defense

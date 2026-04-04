@@ -23,7 +23,7 @@ export type Args = {
   verify: boolean;
 };
 
-const VALID_PROVIDERS = ["claude-cli", "anthropic", "ollama"];
+const VALID_PROVIDERS = ["claude-cli", "anthropic", "ollama", "openai"];
 const VALID_FORMATS = ["text", "json", "sarif"];
 const VALID_SEVERITIES = ["low", "medium", "high", "critical"];
 
@@ -173,8 +173,8 @@ COMMANDS
 
 OPTIONS
   --diff <range>        Git diff range (default: HEAD~1)
-  --provider <name>     LLM provider: claude-cli, anthropic, ollama (default: claude-cli)
-  --model <name>        Model name (e.g. llama3 for ollama, claude-sonnet-4-6-20250514 for anthropic)
+  --provider <name>     LLM provider: claude-cli, anthropic, ollama, openai (default: claude-cli)
+  --model <name>        Model name (e.g. llama3 for ollama, gpt-4o for openai)
   --format <type>       Output format: text, json, sarif (default: text)
   --fail-on <severity>  Exit 1 at this severity: low, medium, high, critical (default: medium)
   --vectors <list>      Comma-separated vectors to run (default: all)
