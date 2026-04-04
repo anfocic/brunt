@@ -1,8 +1,10 @@
-import { readFile, access, mkdir, writeFile } from "node:fs/promises";
+import { readFile, access, mkdir, writeFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Finding } from "../vectors/types.js";
 import type { Provider } from "@packages/llm";
 import { exec, pMap, cleanLlmResponse } from "../util.js";
+
+const RESTORE_MANIFEST = ".brunt-restore";
 
 type TestFramework = {
   name: string;
@@ -177,4 +179,142 @@ export async function verifyTests(
     },
     concurrency
   );
+}
+
+// --- Base-branch verification ---
+
+export async function getBaseFileContent(
+  baseRef: string,
+  filePath: string
+): Promise<string | null> {
+  const { stdout, exitCode } = await exec("git", ["show", `${baseRef}:${filePath}`]);
+  if (exitCode !== 0) return null; // file didn't exist in base
+  return stdout;
+}
+
+type RestoreManifest = Record<string, string>;
+
+async function writeManifest(manifest: RestoreManifest): Promise<void> {
+  await writeFile(RESTORE_MANIFEST, JSON.stringify(manifest), "utf-8");
+}
+
+async function clearManifest(): Promise<void> {
+  try {
+    await unlink(RESTORE_MANIFEST);
+  } catch {}
+}
+
+/** On startup, check for stale manifest and restore files if found. */
+export async function restoreFromManifest(): Promise<boolean> {
+  let raw: string;
+  try {
+    raw = await readFile(RESTORE_MANIFEST, "utf-8");
+  } catch {
+    return false;
+  }
+
+  const manifest: RestoreManifest = JSON.parse(raw);
+  for (const [filePath, content] of Object.entries(manifest)) {
+    await writeFile(filePath, content, "utf-8");
+  }
+  await clearManifest();
+  return true;
+}
+
+export type BaseVerifyResult = {
+  test: GeneratedTest;
+  kept: boolean; // true = test passes on base (bug is in diff), false = fails on base too
+  reason: string;
+};
+
+export async function verifyTestsAgainstBase(
+  tests: GeneratedTest[],
+  baseRef: string,
+  concurrency = 3
+): Promise<BaseVerifyResult[]> {
+  // Check for stale manifest from a previous crash
+  const restored = await restoreFromManifest();
+  if (restored) {
+    console.error("WARNING: Restored files from a previous interrupted base-branch check.");
+  }
+
+  // Group tests by finding.file to serialize within each file
+  const fileGroups = new Map<string, GeneratedTest[]>();
+  for (const test of tests) {
+    const file = test.finding.file;
+    if (!fileGroups.has(file)) fileGroups.set(file, []);
+    fileGroups.get(file)!.push(test);
+  }
+
+  const results = new Map<GeneratedTest, BaseVerifyResult>();
+
+  await pMap(
+    [...fileGroups.entries()],
+    async ([filePath, groupTests]) => {
+      // Get base version of this file
+      const baseContent = await getBaseFileContent(baseRef, filePath);
+      if (baseContent === null) {
+        // New file — can't check against base, keep all findings
+        for (const test of groupTests) {
+          results.set(test, { test, kept: true, reason: "new file (not in base)" });
+        }
+        return;
+      }
+
+      // Read current file content
+      let currentContent: string;
+      try {
+        currentContent = await readFile(filePath, "utf-8");
+      } catch {
+        for (const test of groupTests) {
+          results.set(test, { test, kept: true, reason: "could not read current file" });
+        }
+        return;
+      }
+
+      // Serialize tests within this file group
+      for (const test of groupTests) {
+        // Write manifest before swapping
+        await writeManifest({ [filePath]: currentContent });
+
+        // Register SIGINT handler for this swap
+        const onInterrupt = () => {
+          const fs = require("node:fs");
+          fs.writeFileSync(filePath, currentContent, "utf-8");
+          try { fs.unlinkSync(RESTORE_MANIFEST); } catch {}
+          process.exit(130);
+        };
+        process.on("SIGINT", onInterrupt);
+
+        try {
+          // Swap in base version
+          await writeFile(filePath, baseContent, "utf-8");
+
+          // Run the test against base version
+          const { cmd, args } = await detectTestCommand(test.filePath);
+          const result = await exec(cmd, args, { timeout: 30_000 });
+          const testFailed = result.exitCode !== 0;
+
+          if (testFailed) {
+            // Test fails on base too — bug is pre-existing or test is wrong
+            results.set(test, { test, kept: false, reason: "test also fails on base branch" });
+          } else {
+            // Test passes on base — the diff introduced the bug
+            results.set(test, { test, kept: true, reason: "test passes on base (bug is in diff)" });
+          }
+        } finally {
+          // Always restore current content
+          await writeFile(filePath, currentContent, "utf-8");
+          process.removeListener("SIGINT", onInterrupt);
+        }
+      }
+
+      // All tests for this file done, clear manifest
+      await clearManifest();
+    },
+    concurrency
+  );
+
+  // Return in original test order
+  return tests.map((t) => results.get(t)!);
 }

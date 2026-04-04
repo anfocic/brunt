@@ -126,6 +126,28 @@ function parseDiff(raw: string): DiffFile[] {
 }
 
 
+/**
+ * Extract the base commit ref from a diff range string.
+ * e.g. "origin/main..HEAD" → "origin/main", "HEAD~1" → "HEAD~1", "--cached" → "HEAD"
+ */
+export async function resolveBaseRef(range: string): Promise<string> {
+  let ref: string;
+
+  if (range === "--cached" || range === "--staged") {
+    ref = "HEAD";
+  } else if (range.includes("..")) {
+    ref = range.split("..")[0]!;
+  } else {
+    ref = range;
+  }
+
+  const { stdout, exitCode } = await exec("git", ["rev-parse", ref]);
+  if (exitCode !== 0) {
+    throw new Error(`Could not resolve base ref "${ref}"`);
+  }
+  return stdout.trim();
+}
+
 export async function getDiff(range: string): Promise<DiffFile[]> {
   const { stdout, stderr, exitCode } = await exec("git", ["diff", range], { maxBuffer: 10 * 1024 * 1024 });
 

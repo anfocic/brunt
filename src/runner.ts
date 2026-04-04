@@ -3,7 +3,8 @@ import { getDiff } from "./diff.js";
 import { correctness } from "./vectors/correctness.js";
 import { security } from "./vectors/security.js";
 import type { Vector, VectorReport, ScanReport } from "./vectors/types.js";
-import { generateTests, writeTests, verifyTests } from "./proof/test-gen.js";
+import { generateTests, writeTests, verifyTests, verifyTestsAgainstBase, restoreFromManifest } from "./proof/test-gen.js";
+import { resolveBaseRef } from "./diff.js";
 import { formatText, formatJson, formatSarif, shouldFail } from "./reporter.js";
 import { createProvider, type Provider, type ProviderName } from "@packages/llm";
 import { checkGitRepo, checkProvider } from "./preflight.js";
@@ -32,6 +33,13 @@ function getProvider(name: string, options: { maxTokens?: number; model?: string
 
 export async function run(args: Args): Promise<number> {
   printBanner();
+
+  // Recover files if a previous base-branch check was interrupted
+  const restored = await restoreFromManifest();
+  if (restored) {
+    console.error("WARNING: Restored files from a previous interrupted base-branch check.");
+  }
+
   await checkGitRepo();
   await checkProvider(args.provider, args.model);
 
@@ -154,6 +162,32 @@ export async function run(args: Args): Promise<number> {
 
       verifySpinner.succeed(`Verified: ${verified.length} confirmed, ${dropped.length} dropped (test passed = no bug).`);
       allFindings = vectorReports.flatMap((v) => v.findings);
+
+      // Base-branch verification: drop findings where test also fails on base
+      if (tests.length > 0) {
+        const baseSpinner = new Spinner(`Base-branch check: ${tests.length} test${tests.length === 1 ? "" : "s"}...`);
+        baseSpinner.start();
+        try {
+          const baseRef = await resolveBaseRef(args.diff);
+          const baseResults = await verifyTestsAgainstBase(tests, baseRef, args.concurrency);
+          const baseDrop = baseResults.filter((r) => !r.kept);
+
+          if (baseDrop.length > 0) {
+            const droppedFindings = new Set(baseDrop.map((r) => findingKey(r.test.finding)));
+            tests = tests.filter((t) => !droppedFindings.has(findingKey(t.finding)));
+            for (const vr of vectorReports) {
+              vr.findings = vr.findings.filter((f) => !droppedFindings.has(findingKey(f)));
+            }
+            report.totalFindings = vectorReports.reduce((sum, v) => sum + v.findings.length, 0);
+          }
+
+          const kept = baseResults.filter((r) => r.kept).length;
+          baseSpinner.succeed(`Base-branch: ${kept} confirmed, ${baseDrop.length} dropped (pre-existing or false positive).`);
+          allFindings = vectorReports.flatMap((v) => v.findings);
+        } catch (err) {
+          baseSpinner.fail(`Base-branch check failed: ${err instanceof Error ? err.message : err}`);
+        }
+      }
     }
   } else if (allFindings.length > 0) {
     const s = new Spinner("");
