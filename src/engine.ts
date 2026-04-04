@@ -6,6 +6,7 @@ import { injectCanary, verifyCanary, verifyCanaryWithLlm } from "./canary.js";
 import { computeCacheKey, readCache, writeCache } from "./cache.js";
 import { detectInjection } from "./injection.js";
 import { detectSuspiciousSilence } from "./silence.js";
+import { loadCrossReferences, type CrossRefMatch } from "./crossref.js";
 
 const API_CONCURRENCY = 5;
 const BATCH_TOKEN_BUDGET = 4000; // max estimated tokens per batch
@@ -136,6 +137,7 @@ export async function scanEngine(
   const sanitizedFiles = sanitizeDiff(files);
   const { files: filesWithCanary, canary } = injectCanary(sanitizedFiles);
   const context = await loadContext(files);
+  const crossRefs = await loadCrossReferences(files);
 
   onProgress?.({ type: "vectors-start", total: vectors.length });
 
@@ -151,7 +153,7 @@ export async function scanEngine(
           const ctx = context.get(file.path);
           if (ctx) batchContext.set(file.path, ctx);
         }
-        return vector.analyze(batch, batchContext, provider);
+        return vector.analyze(batch, batchContext, provider, crossRefs);
       });
       const perBatchResults = await runWithConcurrency(tasks, concurrency);
       const findings = perBatchResults.flatMap((r) =>

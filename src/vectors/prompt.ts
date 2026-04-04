@@ -1,4 +1,5 @@
 import type { DiffFile } from "../diff.js";
+import type { CrossRefMatch } from "../crossref.js";
 
 export function buildDiffSection(files: DiffFile[]): string {
   let out = "";
@@ -16,6 +17,15 @@ export function buildContextSection(context: Map<string, string>): string {
   let out = "";
   for (const [path, content] of context) {
     out += `\n--- ${path} (full file) ---\n${content}\n`;
+  }
+  return out;
+}
+
+export function buildCrossRefSection(matches: CrossRefMatch[]): string {
+  if (matches.length === 0) return "";
+  let out = "";
+  for (const m of matches) {
+    out += `\n--- ${m.file}:${m.line} (uses: ${m.symbol}) ---\n${m.snippet}\n`;
   }
   return out;
 }

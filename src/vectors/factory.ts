@@ -1,6 +1,6 @@
 import type { Vector } from "./types.js";
 import { parseFindings } from "./parse.js";
-import { buildDiffSection, buildContextSection, RESPONSE_FORMAT } from "./prompt.js";
+import { buildDiffSection, buildContextSection, buildCrossRefSection, RESPONSE_FORMAT } from "./prompt.js";
 import { isTTY } from "../tui.js";
 import { dim } from "@packages/devkit";
 
@@ -14,15 +14,19 @@ export function createVector(
   return {
     name,
     description,
-    async analyze(files, context, provider) {
+    async analyze(files, context, provider, crossRefs) {
       if (files.length === 0) return [];
+
+      const crossRefSection = crossRefs && crossRefs.length > 0
+        ? `\nCROSS-REFERENCE CALLERS (other files that use changed symbols — check for breakage):\n${buildCrossRefSection(crossRefs)}\n`
+        : "";
 
       const userPrompt = `DIFF (lines starting with + are added, - are removed):
 ${buildDiffSection(files)}
 
 FULL FILE CONTEXT:
 ${buildContextSection(context)}
-
+${crossRefSection}
 JSON array:`;
 
       if (provider.queryStream && isTTY()) {

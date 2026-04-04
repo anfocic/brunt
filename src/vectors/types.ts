@@ -1,6 +1,7 @@
 import type { DiffFile } from "../diff.js";
 export type { DiffFile };
 import type { Provider } from "@packages/llm";
+import type { CrossRefMatch } from "../crossref.js";
 
 export type Severity = "low" | "medium" | "high" | "critical";
 
@@ -31,6 +32,7 @@ export interface Vector {
   analyze(
     files: DiffFile[],
     context: Map<string, string>,
-    provider: Provider
+    provider: Provider,
+    crossRefs?: CrossRefMatch[]
   ): Promise<Finding[]>;
 }
