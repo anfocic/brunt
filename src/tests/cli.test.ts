@@ -144,4 +144,19 @@ describe("cli", () => {
     const { stderr } = run("scan", "--config", "my-config.yaml", "--provider", "nonexistent");
     assert.ok(!stderr.includes("Unknown flag"));
   });
+
+  test("help includes --incremental flag", () => {
+    const { stdout } = run("help");
+    assert.ok(stdout.includes("--incremental"));
+  });
+
+  test("accepts --incremental flag", () => {
+    const { stderr } = run("scan", "--incremental", "--provider", "nonexistent");
+    assert.ok(!stderr.includes("Unknown flag"));
+  });
+
+  test("accepts --incremental-path flag", () => {
+    const { stderr } = run("scan", "--incremental-path", "custom.json", "--provider", "nonexistent");
+    assert.ok(!stderr.includes("Unknown flag"));
+  });
 });

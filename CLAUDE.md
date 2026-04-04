@@ -23,6 +23,7 @@ src/
 ├── diff.ts         # Git diff parsing → DiffFile[]
 ├── config.ts       # brunt.config.yaml loading
 ├── monorepo.ts     # Package boundary detection for --scope
+├── incremental.ts  # Per-file hashing for --incremental
 ├── vectors/        # Analysis modules (each wraps an LLM prompt)
 │   ├── factory.ts  # createVector() — the core abstraction
 │   ├── custom.ts   # User-defined vectors from config
@@ -43,6 +44,7 @@ packages/
 - 8 tests in diff/runner suites are pre-existing failures (git repo setup issues in test env). Your changes should not add new failures.
 - `createVector(name, description, promptBody)` in `factory.ts` is the core abstraction. Custom vectors, correctness, and security all use it. The factory injects diff/context/crossref sections automatically — vector prompts only define the system behavior.
 - Cache keys hash (files + vectors + provider). Changing a vector's prompt without changing its name can serve stale cache.
+- Incremental state (`.brunt-incremental.json`) is per-file granularity. It invalidates entirely if provider/model/vectors change between runs.
 - Comment stripping (`sanitize.ts`) removes comments before the LLM sees code — this is a security feature against prompt injection, not a bug.
 
 ## Code Conventions

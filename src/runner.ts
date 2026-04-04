@@ -107,6 +107,8 @@ export async function run(args: Args): Promise<number> {
         providerName: args.provider,
         model: args.model,
         packageRoot: multiPackage ? group.root : undefined,
+        incremental: args.incremental,
+        incrementalPath: args.incrementalPath,
       },
       (event: ProgressEvent) => {
         switch (event.type) {
@@ -114,6 +116,12 @@ export async function run(args: Args): Promise<number> {
             console.error(`WARNING: Possible prompt injection in ${event.file}`);
             console.error(`         "${event.line}"`);
             console.error("         Review this file manually — analysis may be compromised.");
+            break;
+          case "incremental-hit":
+            process.stderr.write(`  Incremental: ${event.unchanged} file${event.unchanged === 1 ? "" : "s"} unchanged, rescanning ${event.rescanning}.\n`);
+            break;
+          case "incremental-invalidated":
+            process.stderr.write("  Incremental state invalidated (provider/model/vectors changed). Full scan.\n");
             break;
           case "cache-hit":
             spinner.start("Cache hit — skipping LLM analysis.");

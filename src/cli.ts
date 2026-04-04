@@ -23,6 +23,8 @@ export type Args = {
   verify: boolean;
   scope: string;
   config?: string;
+  incremental: boolean;
+  incrementalPath?: string;
 };
 
 const VALID_PROVIDERS = ["claude-cli", "anthropic", "ollama", "openai"];
@@ -68,6 +70,8 @@ export function parseArgs(argv: string[]): Args {
   let verify = false;
   let scope = "auto";
   let config: string | undefined;
+  let incremental = false;
+  let incrementalPath: string | undefined;
 
   for (let i = startIdx; i < args.length; i++) {
     const arg = args[i];
@@ -137,6 +141,12 @@ export function parseArgs(argv: string[]): Args {
     } else if (arg === "--config" && next) {
       config = next;
       i++;
+    } else if (arg === "--incremental") {
+      incremental = true;
+    } else if (arg === "--incremental-path" && next) {
+      incrementalPath = next;
+      incremental = true;
+      i++;
     } else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -166,6 +176,8 @@ export function parseArgs(argv: string[]): Args {
     verify,
     scope,
     config,
+    incremental,
+    incrementalPath,
   };
 }
 
@@ -202,6 +214,8 @@ OPTIONS
   --pr                  Create a PR with verified fixes (requires --fix)
   --scope <value>       Monorepo scope: auto, all, or pkg1,pkg2 (default: auto)
   --config <path>       Path to brunt.config.yaml (auto-detected by default)
+  --incremental         Reuse findings for unchanged files across runs
+  --incremental-path <f> Path to incremental state file (default: .brunt-incremental.json)
 `);
 }
 

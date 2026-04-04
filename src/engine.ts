@@ -7,6 +7,15 @@ import { computeCacheKey, readCache, writeCache } from "./cache.js";
 import { detectInjection } from "./injection.js";
 import { detectSuspiciousSilence } from "./silence.js";
 import { loadCrossReferences, type CrossRefMatch } from "./crossref.js";
+import {
+  loadIncrementalState,
+  saveIncrementalState,
+  isStateCompatible,
+  partitionFiles,
+  mergeFindings,
+  buildState,
+  INCREMENTAL_PATH,
+} from "./incremental.js";
 
 const API_CONCURRENCY = 5;
 const BATCH_TOKEN_BUDGET = 4000; // max estimated tokens per batch
@@ -94,6 +103,8 @@ type ScanInput = {
   providerName?: string;
   model?: string;
   packageRoot?: string;
+  incremental?: boolean;
+  incrementalPath?: string;
 };
 
 type ScanResult = {
@@ -110,7 +121,9 @@ export type ProgressEvent =
   | { type: "vector-failed"; name: string; message: string }
   | { type: "canary-missed" }
   | { type: "canary-failed" }
-  | { type: "suspicious-silence"; file: string };
+  | { type: "suspicious-silence"; file: string }
+  | { type: "incremental-hit"; unchanged: number; rescanning: number }
+  | { type: "incremental-invalidated" };
 
 type ProgressCallback = (event: ProgressEvent) => void;
 
@@ -118,7 +131,7 @@ export async function scanEngine(
   input: ScanInput,
   onProgress?: ProgressCallback
 ): Promise<ScanResult> {
-  const { files, vectors, provider, noCache, providerName, model, packageRoot } = input;
+  const { files, vectors, provider, noCache, providerName, model, packageRoot, incremental, incrementalPath } = input;
 
   const cacheKey = computeCacheKey(files, vectors, providerName ?? provider.name, model);
 
@@ -130,15 +143,52 @@ export async function scanEngine(
     }
   }
 
-  const injectionWarnings = detectInjection(files);
+  // Incremental: partition into changed/unchanged files
+  let filesToScan = files;
+  let carriedFindings: import("./incremental.js").PerFileFinding[] = [];
+  let useIncremental = false;
+
+  if (incremental) {
+    const state = await loadIncrementalState(incrementalPath);
+    if (state && isStateCompatible(state, providerName ?? provider.name, model, vectors.map((v) => v.name))) {
+      const partition = partitionFiles(files, state);
+      if (partition.unchanged.length > 0) {
+        onProgress?.({ type: "incremental-hit", unchanged: partition.unchanged.length, rescanning: partition.changed.length });
+        filesToScan = partition.changed;
+        carriedFindings = partition.carriedFindings;
+        useIncremental = true;
+      }
+    } else if (state) {
+      onProgress?.({ type: "incremental-invalidated" });
+    }
+  }
+
+  // If incremental and ALL files unchanged, return carried findings directly
+  if (useIncremental && filesToScan.length === 0) {
+    const emptyReports: VectorReport[] = vectors.map((v) => ({ name: v.name, findings: [], duration: 0 }));
+    const merged = mergeFindings(emptyReports, carriedFindings, files);
+
+    if (incremental) {
+      const state = buildState(providerName ?? provider.name, model, vectors.map((v) => v.name), files, merged);
+      await saveIncrementalState(state, incrementalPath);
+    }
+
+    if (!noCache) {
+      await writeCache(cacheKey, merged);
+    }
+
+    return { vectorReports: merged, canaryVerified: true, fromCache: true };
+  }
+
+  const injectionWarnings = detectInjection(filesToScan);
   for (const w of injectionWarnings) {
     onProgress?.({ type: "injection-detected", file: w.file, line: w.line });
   }
 
-  const sanitizedFiles = sanitizeDiff(files);
+  const sanitizedFiles = sanitizeDiff(filesToScan);
   const { files: filesWithCanary, canary } = injectCanary(sanitizedFiles);
-  const context = await loadContext(files, packageRoot);
-  const crossRefs = await loadCrossReferences(files, packageRoot);
+  const context = await loadContext(filesToScan, packageRoot);
+  const crossRefs = await loadCrossReferences(filesToScan, packageRoot);
 
   onProgress?.({ type: "vectors-start", total: vectors.length });
 
@@ -197,15 +247,26 @@ export async function scanEngine(
     );
   }
 
-  const allFindings = vectorReports.flatMap((v) => v.findings);
+  // Merge with carried findings from incremental state
+  const finalReports = useIncremental
+    ? mergeFindings(vectorReports, carriedFindings, files)
+    : vectorReports;
+
+  const allFindings = finalReports.flatMap((v) => v.findings);
   const silentFiles = detectSuspiciousSilence(files, allFindings);
   for (const f of silentFiles) {
     onProgress?.({ type: "suspicious-silence", file: f });
   }
 
   if (!noCache) {
-    await writeCache(cacheKey, vectorReports);
+    await writeCache(cacheKey, finalReports);
   }
 
-  return { vectorReports, canaryVerified, fromCache: false };
+  // Save incremental state
+  if (incremental) {
+    const state = buildState(providerName ?? provider.name, model, vectors.map((v) => v.name), files, finalReports);
+    await saveIncrementalState(state, incrementalPath);
+  }
+
+  return { vectorReports: finalReports, canaryVerified, fromCache: false };
 }
