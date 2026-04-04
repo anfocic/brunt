@@ -170,8 +170,11 @@ export async function verifyTests(
       const result = await exec(cmd, args, { timeout: 30_000, maxBuffer: 1024 * 1024 });
       const output = (result.stderr || result.stdout).slice(0, 500);
       // Only count as verified if the test runner actually ran and the test failed.
-      // Timeouts, missing commands, and syntax errors are NOT proof of a bug.
-      const failed = result.exitCode !== 0 && !result.timedOut && result.exitCode !== 127;
+      // Timeouts, missing commands, syntax errors, and module resolution failures are NOT proof of a bug.
+      const isInfraFailure = result.timedOut ||
+        result.exitCode === 127 ||
+        /SyntaxError|Cannot find module|ERR_MODULE_NOT_FOUND|ERR_UNKNOWN_FILE_EXTENSION/.test(output);
+      const failed = result.exitCode !== 0 && !isInfraFailure;
       return {
         test,
         verified: failed,
