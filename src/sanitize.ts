@@ -108,11 +108,13 @@ function stripHtmlComments(text: string): string {
 }
 
 function stripLines(lines: string[], language: string): string[] {
-  return lines.map((line) => {
-    let cleaned = stripLineComments(line, language);
-    cleaned = stripBlockComments(cleaned);
-    cleaned = stripHtmlComments(cleaned);
-    return cleaned;
+  // First pass: strip multi-line block comments by joining all lines
+  const joined = stripBlockComments(lines.join("\n"));
+  const afterBlock = stripHtmlComments(joined).split("\n");
+
+  // Second pass: strip single-line comments per-line
+  return afterBlock.map((line) => {
+    return stripLineComments(line, language);
   }).filter((line) => line.trim().length > 0);
 }
 

@@ -5,13 +5,15 @@ export function exec(
   cmd: string,
   args: string[],
   opts?: { cwd?: string; timeout?: number; maxBuffer?: number }
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean }> {
   return new Promise((resolve) => {
     execFile(cmd, args, { ...opts, encoding: "utf-8" }, (error, stdout, stderr) => {
+      const timedOut = !!(error && "killed" in error && error.killed);
       resolve({
         stdout: stdout ?? "",
         stderr: stderr ?? "",
-        exitCode: error ? 1 : 0,
+        exitCode: error ? (error as NodeJS.ErrnoException).code === "ENOENT" ? 127 : 1 : 0,
+        timedOut,
       });
     });
   });
