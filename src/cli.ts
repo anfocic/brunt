@@ -21,6 +21,7 @@ export type Args = {
   fixRetries: number;
   pr: boolean;
   verify: boolean;
+  scope: string;
 };
 
 const VALID_PROVIDERS = ["claude-cli", "anthropic", "ollama", "openai"];
@@ -64,6 +65,7 @@ export function parseArgs(argv: string[]): Args {
   let fixRetries: number | undefined;
   let pr = false;
   let verify = false;
+  let scope = "auto";
 
   for (let i = startIdx; i < args.length; i++) {
     const arg = args[i];
@@ -127,6 +129,9 @@ export function parseArgs(argv: string[]): Args {
       i++;
     } else if (arg === "--verify") {
       verify = true;
+    } else if (arg === "--scope" && next) {
+      scope = next;
+      i++;
     } else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -154,6 +159,7 @@ export function parseArgs(argv: string[]): Args {
     fixRetries: fixRetries ?? 2,
     pr,
     verify,
+    scope,
   };
 }
 
@@ -188,6 +194,7 @@ OPTIONS
   --fix                 Auto-generate fixes and verify against proof tests
   --fix-retries <n>     Max fix attempts per finding (default: 2, max: 5)
   --pr                  Create a PR with verified fixes (requires --fix)
+  --scope <value>       Monorepo scope: auto, all, or pkg1,pkg2 (default: auto)
 `);
 }
 

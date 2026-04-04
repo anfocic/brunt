@@ -117,4 +117,20 @@ describe("cli", () => {
     assert.ok(stdout.includes("baseline"));
     assert.ok(stdout.includes("--no-baseline"));
   });
+
+  test("help includes --scope flag", () => {
+    const { stdout } = run("help");
+    assert.ok(stdout.includes("--scope"));
+    assert.ok(stdout.includes("Monorepo"));
+  });
+
+  test("accepts --scope flag", () => {
+    const { stderr } = run("scan", "--scope", "auto", "--provider", "nonexistent");
+    assert.ok(!stderr.includes("Unknown flag"));
+  });
+
+  test("accepts --scope with package names", () => {
+    const { stderr } = run("scan", "--scope", "pkg1,pkg2", "--provider", "nonexistent");
+    assert.ok(!stderr.includes("Unknown flag"));
+  });
 });

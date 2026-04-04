@@ -6,11 +6,16 @@ const WINDOW_SIZE = 50; // lines above/below each hunk
 const HEADER_LINES = 10; // always include first N lines (imports/types)
 const SMALL_FILE_THRESHOLD = 200; // send full file if under this many lines
 
-export async function loadContext(files: DiffFile[]): Promise<Map<string, string>> {
+export async function loadContext(files: DiffFile[], packageRoot?: string): Promise<Map<string, string>> {
   const context = new Map<string, string>();
 
   const reads = files.map(async (file) => {
     try {
+      // When scoped to a package, only load context for files within that package
+      if (packageRoot && packageRoot !== "." && !file.path.startsWith(packageRoot + "/")) {
+        return;
+      }
+
       const info = await stat(file.path);
       if (info.size > MAX_FILE_SIZE) return;
 

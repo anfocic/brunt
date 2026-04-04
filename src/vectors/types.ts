@@ -12,6 +12,7 @@ export type Finding = {
   title: string;
   description: string;
   reproduction: string;
+  package?: string;
 };
 
 export type VectorReport = {

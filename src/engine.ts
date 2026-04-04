@@ -93,6 +93,7 @@ type ScanInput = {
   noCache?: boolean;
   providerName?: string;
   model?: string;
+  packageRoot?: string;
 };
 
 type ScanResult = {
@@ -117,7 +118,7 @@ export async function scanEngine(
   input: ScanInput,
   onProgress?: ProgressCallback
 ): Promise<ScanResult> {
-  const { files, vectors, provider, noCache, providerName, model } = input;
+  const { files, vectors, provider, noCache, providerName, model, packageRoot } = input;
 
   const cacheKey = computeCacheKey(files, vectors, providerName ?? provider.name, model);
 
@@ -136,8 +137,8 @@ export async function scanEngine(
 
   const sanitizedFiles = sanitizeDiff(files);
   const { files: filesWithCanary, canary } = injectCanary(sanitizedFiles);
-  const context = await loadContext(files);
-  const crossRefs = await loadCrossReferences(files);
+  const context = await loadContext(files, packageRoot);
+  const crossRefs = await loadCrossReferences(files, packageRoot);
 
   onProgress?.({ type: "vectors-start", total: vectors.length });
 

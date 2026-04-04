@@ -14,6 +14,7 @@ import { Spinner, ProgressBoard, printBanner } from "./tui.js";
 import { findingKey } from "./util.js";
 import { scanEngine, type ProgressEvent } from "./engine.js";
 import { loadBaseline, saveBaseline, filterBaselined, computeFingerprint, BASELINE_PATH, type BaselineEntry } from "./baseline.js";
+import { groupByPackage, filterByScope, type PackageGroup } from "./monorepo.js";
 
 const ALL_VECTORS: Vector[] = [correctness, security];
 
@@ -54,57 +55,102 @@ export async function run(args: Args): Promise<number> {
 
   spinner.succeed(`Parsed ${files.length} file${files.length === 1 ? "" : "s"}.`);
 
-  const board = new ProgressBoard(vectors.map((v) => v.name));
-  let boardStarted = false;
-
-  const { vectorReports, fromCache } = await scanEngine(
-    {
-      files,
-      vectors,
-      provider,
-      noCache: args.noCache,
-      providerName: args.provider,
-      model: args.model,
-    },
-    (event: ProgressEvent) => {
-      switch (event.type) {
-        case "injection-detected":
-          console.error(`WARNING: Possible prompt injection in ${event.file}`);
-          console.error(`         "${event.line}"`);
-          console.error("         Review this file manually — analysis may be compromised.");
-          break;
-        case "cache-hit":
-          spinner.start("Cache hit — skipping LLM analysis.");
-          spinner.succeed("Cache hit — loaded previous results.");
-          break;
-        case "vectors-start":
-          process.stderr.write(`\n  Running ${event.total} vector${event.total === 1 ? "" : "s"} via ${provider.name}:\n\n`);
-          for (const v of vectors) board.update(v.name, "running");
-          boardStarted = true;
-          break;
-        case "vector-done":
-          board.update(event.name, "done", `${event.count} finding${event.count === 1 ? "" : "s"}`, event.duration);
-          break;
-        case "vector-failed":
-          board.update(event.name, "failed", event.message);
-          console.error(`WARNING: Vector "${event.name}" failed: ${event.message}`);
-          break;
-        case "canary-missed":
-          console.error("WARNING: Canary bug was not detected. Analysis may have been compromised by prompt injection.");
-          console.error("         Results may be unreliable. Review the diff manually.");
-          break;
-        case "canary-failed":
-          console.error("WARNING: Canary two-pass verification failed. The canary match may be a false positive.");
-          console.error("         Results may be unreliable. Review the diff manually.");
-          break;
-        case "suspicious-silence":
-          console.error(`WARNING: ${event.file} touches security-sensitive code but produced zero findings. Review manually.`);
-          break;
-      }
+  // Determine package groups based on --scope
+  let groups: PackageGroup[];
+  if (args.scope === "all") {
+    groups = [{ name: "<all>", root: ".", manifest: "", files }];
+  } else {
+    groups = await groupByPackage(files);
+    if (args.scope !== "auto") {
+      groups = filterByScope(groups, args.scope.split(",").map((s) => s.trim()));
     }
-  );
+  }
 
-  if (boardStarted) board.finish();
+  // If only one group, no need for per-package labels
+  const multiPackage = groups.length > 1;
+
+  if (multiPackage) {
+    process.stderr.write(`\n  Detected ${groups.length} package${groups.length === 1 ? "" : "s"}: ${groups.map((g) => g.name).join(", ")}\n`);
+  }
+
+  const allVectorReports: VectorReport[] = vectors.map((v) => ({ name: v.name, findings: [], duration: 0 }));
+  let anyFromCache = false;
+
+  for (const group of groups) {
+    if (group.files.length === 0) continue;
+
+    if (multiPackage) {
+      process.stderr.write(`\n  Scanning ${group.name} (${group.files.length} file${group.files.length === 1 ? "" : "s"})...\n`);
+    }
+
+    const board = new ProgressBoard(vectors.map((v) => v.name));
+    let boardStarted = false;
+
+    const { vectorReports: groupReports, fromCache } = await scanEngine(
+      {
+        files: group.files,
+        vectors,
+        provider,
+        noCache: args.noCache,
+        providerName: args.provider,
+        model: args.model,
+        packageRoot: multiPackage ? group.root : undefined,
+      },
+      (event: ProgressEvent) => {
+        switch (event.type) {
+          case "injection-detected":
+            console.error(`WARNING: Possible prompt injection in ${event.file}`);
+            console.error(`         "${event.line}"`);
+            console.error("         Review this file manually — analysis may be compromised.");
+            break;
+          case "cache-hit":
+            spinner.start("Cache hit — skipping LLM analysis.");
+            spinner.succeed("Cache hit — loaded previous results.");
+            break;
+          case "vectors-start":
+            process.stderr.write(`\n  Running ${event.total} vector${event.total === 1 ? "" : "s"} via ${provider.name}:\n\n`);
+            for (const v of vectors) board.update(v.name, "running");
+            boardStarted = true;
+            break;
+          case "vector-done":
+            board.update(event.name, "done", `${event.count} finding${event.count === 1 ? "" : "s"}`, event.duration);
+            break;
+          case "vector-failed":
+            board.update(event.name, "failed", event.message);
+            console.error(`WARNING: Vector "${event.name}" failed: ${event.message}`);
+            break;
+          case "canary-missed":
+            console.error("WARNING: Canary bug was not detected. Analysis may have been compromised by prompt injection.");
+            console.error("         Results may be unreliable. Review the diff manually.");
+            break;
+          case "canary-failed":
+            console.error("WARNING: Canary two-pass verification failed. The canary match may be a false positive.");
+            console.error("         Results may be unreliable. Review the diff manually.");
+            break;
+          case "suspicious-silence":
+            console.error(`WARNING: ${event.file} touches security-sensitive code but produced zero findings. Review manually.`);
+            break;
+        }
+      }
+    );
+
+    if (boardStarted) board.finish();
+    if (fromCache) anyFromCache = true;
+
+    // Merge findings into the combined reports, tagging with package name
+    for (let i = 0; i < groupReports.length; i++) {
+      const groupReport = groupReports[i]!;
+      const combined = allVectorReports[i]!;
+      for (const finding of groupReport.findings) {
+        if (multiPackage) finding.package = group.name;
+        combined.findings.push(finding);
+      }
+      combined.duration += groupReport.duration;
+    }
+  }
+
+  const vectorReports = allVectorReports;
+  const fromCache = anyFromCache;
 
   const report: ScanReport = {
     vectors: vectorReports,

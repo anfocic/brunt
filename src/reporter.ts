@@ -63,33 +63,52 @@ export function formatText(report: ScanReport, tests: GeneratedTest[], fixes: Fi
       (a, b) => SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity]
     );
 
-    for (const f of sorted) {
-      const color = SEVERITY_COLORS[f.severity];
-      const key = findingKey(f);
-      const fix = fixMap.get(key);
+    // Group findings by package if present
+    const hasPackages = sorted.some((f) => f.package);
+    const byPackage = new Map<string, typeof sorted>();
+    if (hasPackages) {
+      for (const f of sorted) {
+        const pkg = f.package ?? "<root>";
+        if (!byPackage.has(pkg)) byPackage.set(pkg, []);
+        byPackage.get(pkg)!.push(f);
+      }
+    } else {
+      byPackage.set("", sorted);
+    }
 
-      let badge = "";
-      if (fix?.status === "verified") {
-        badge = ` ${green("[FIXED]")}`;
-      } else if (fix?.status === "failed") {
-        badge = ` ${red("[FIX FAILED]")}`;
+    for (const [pkg, findings] of byPackage) {
+      if (pkg && hasPackages) {
+        out += `  ${dim(`[${pkg}]`)}\n`;
       }
 
-      out += `  ${color(f.severity.toUpperCase())} ${f.file}:${f.line}${badge}\n`;
-      out += `  ${bold(f.title)}\n`;
-      out += `  ${f.description}\n`;
-      out += `  Reproduction: ${f.reproduction}\n`;
+      for (const f of findings) {
+        const color = SEVERITY_COLORS[f.severity];
+        const key = findingKey(f);
+        const fix = fixMap.get(key);
 
-      const test = testMap.get(key);
-      if (test) {
-        out += `  ${dim(`Test: ${test.filePath}`)}\n`;
+        let badge = "";
+        if (fix?.status === "verified") {
+          badge = ` ${green("[FIXED]")}`;
+        } else if (fix?.status === "failed") {
+          badge = ` ${red("[FIX FAILED]")}`;
+        }
+
+        out += `  ${color(f.severity.toUpperCase())} ${f.file}:${f.line}${badge}\n`;
+        out += `  ${bold(f.title)}\n`;
+        out += `  ${f.description}\n`;
+        out += `  Reproduction: ${f.reproduction}\n`;
+
+        const test = testMap.get(key);
+        if (test) {
+          out += `  ${dim(`Test: ${test.filePath}`)}\n`;
+        }
+
+        if (fix?.status === "verified" && fix.diff) {
+          out += `\n${formatInlineDiff(fix.diff)}`;
+        }
+
+        out += "\n";
       }
-
-      if (fix?.status === "verified" && fix.diff) {
-        out += `\n${formatInlineDiff(fix.diff)}`;
-      }
-
-      out += "\n";
     }
   }
 
@@ -204,6 +223,7 @@ export function formatSarif(report: ScanReport, tests: GeneratedTest[], suppress
             },
           },
         ],
+        ...(f.package ? { properties: { package: f.package } } : {}),
       };
     }),
     ...(suppressedCount > 0
@@ -242,6 +262,7 @@ export function formatJson(report: ScanReport, tests: GeneratedTest[], fixes: Fi
       const fix = fixMap.get(findingKey(f));
       return {
         ...f,
+        ...(f.package ? { package: f.package } : {}),
         testFile: test?.filePath ?? null,
         fix: fix
           ? { status: fix.status, attempts: fix.attempts, diff: fix.diff || null }

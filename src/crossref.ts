@@ -63,18 +63,24 @@ export function extractSymbols(files: DiffFile[]): string[] {
 
 export async function findCrossReferences(
   symbols: string[],
-  changedFiles: Set<string>
+  changedFiles: Set<string>,
+  packageRoot?: string
 ): Promise<CrossRefMatch[]> {
   if (symbols.length === 0) return [];
 
   const matches: CrossRefMatch[] = [];
+
+  // When scoped to a package, restrict git grep to that package's directory
+  const pathSpecs = packageRoot && packageRoot !== "."
+    ? [`${packageRoot}/**/*.ts`, `${packageRoot}/**/*.js`, `${packageRoot}/**/*.tsx`, `${packageRoot}/**/*.jsx`, `${packageRoot}/**/*.py`, `${packageRoot}/**/*.go`, `${packageRoot}/**/*.rs`, `${packageRoot}/**/*.rb`, `${packageRoot}/**/*.java`, `${packageRoot}/**/*.kt`]
+    : ["*.ts", "*.js", "*.tsx", "*.jsx", "*.py", "*.go", "*.rs", "*.rb", "*.java", "*.kt"];
 
   for (const symbol of symbols) {
     if (matches.length >= MAX_MATCHES) break;
 
     const { stdout, exitCode } = await exec(
       "git",
-      ["grep", "-n", "--max-count=5", "-w", symbol, "--", "*.ts", "*.js", "*.tsx", "*.jsx", "*.py", "*.go", "*.rs", "*.rb", "*.java", "*.kt"],
+      ["grep", "-n", "--max-count=5", "-w", symbol, "--", ...pathSpecs],
       { timeout: GREP_TIMEOUT }
     );
 
@@ -139,12 +145,12 @@ export async function loadSnippets(matches: CrossRefMatch[]): Promise<CrossRefMa
   return loaded;
 }
 
-export async function loadCrossReferences(files: DiffFile[]): Promise<CrossRefMatch[]> {
+export async function loadCrossReferences(files: DiffFile[], packageRoot?: string): Promise<CrossRefMatch[]> {
   const symbols = extractSymbols(files);
   if (symbols.length === 0) return [];
 
   const changedFiles = new Set(files.map((f) => f.path));
-  const matches = await findCrossReferences(symbols, changedFiles);
+  const matches = await findCrossReferences(symbols, changedFiles, packageRoot);
   if (matches.length === 0) return [];
 
   return loadSnippets(matches);
