@@ -15,14 +15,25 @@ import { findingKey } from "./util.js";
 import { scanEngine, type ProgressEvent } from "./engine.js";
 import { loadBaseline, saveBaseline, filterBaselined, computeFingerprint, BASELINE_PATH, type BaselineEntry } from "./baseline.js";
 import { groupByPackage, filterByScope, type PackageGroup } from "./monorepo.js";
+import { loadConfig } from "./config.js";
+import { createCustomVectors } from "./vectors/custom.js";
 
-const ALL_VECTORS: Vector[] = [correctness, security];
+const BUILTIN_VECTORS: Vector[] = [correctness, security];
 
-function getVectors(names?: string[]): Vector[] {
-  if (!names || names.length === 0) return ALL_VECTORS;
+async function loadAllVectors(configPath?: string): Promise<Vector[]> {
+  const config = await loadConfig(configPath);
+  if (config?.vectors?.length) {
+    const custom = createCustomVectors(config.vectors);
+    return [...BUILTIN_VECTORS, ...custom];
+  }
+  return BUILTIN_VECTORS;
+}
+
+function getVectors(allVectors: Vector[], names?: string[]): Vector[] {
+  if (!names || names.length === 0) return allVectors;
   return names.map((name) => {
-    const v = ALL_VECTORS.find((v) => v.name === name);
-    if (!v) throw new Error(`Unknown vector: "${name}". Available: ${ALL_VECTORS.map((v) => v.name).join(", ")}`);
+    const v = allVectors.find((v) => v.name === name);
+    if (!v) throw new Error(`Unknown vector: "${name}". Available: ${allVectors.map((v) => v.name).join(", ")}`);
     return v;
   });
 }
@@ -40,7 +51,8 @@ export async function run(args: Args): Promise<number> {
     maxTokens: args.maxTokens,
     model: args.model,
   });
-  const vectors = getVectors(args.vectors);
+  const allVectors = await loadAllVectors(args.config);
+  const vectors = getVectors(allVectors, args.vectors);
   const scanStart = performance.now();
 
   const spinner = new Spinner("Parsing diff...");
@@ -271,7 +283,8 @@ export async function runBaseline(args: Args): Promise<number> {
     maxTokens: args.maxTokens,
     model: args.model,
   });
-  const vectors = getVectors(args.vectors);
+  const allVectors = await loadAllVectors(args.config);
+  const vectors = getVectors(allVectors, args.vectors);
 
   const spinner = new Spinner("Parsing diff...");
   spinner.start();

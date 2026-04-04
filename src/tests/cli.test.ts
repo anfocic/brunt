@@ -133,4 +133,15 @@ describe("cli", () => {
     const { stderr } = run("scan", "--scope", "pkg1,pkg2", "--provider", "nonexistent");
     assert.ok(!stderr.includes("Unknown flag"));
   });
+
+  test("help includes --config flag", () => {
+    const { stdout } = run("help");
+    assert.ok(stdout.includes("--config"));
+    assert.ok(stdout.includes("brunt.config.yaml"));
+  });
+
+  test("accepts --config flag", () => {
+    const { stderr } = run("scan", "--config", "my-config.yaml", "--provider", "nonexistent");
+    assert.ok(!stderr.includes("Unknown flag"));
+  });
 });
