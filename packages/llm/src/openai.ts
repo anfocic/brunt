@@ -3,7 +3,7 @@ import type { Provider, ProviderOptions, LlmResponse } from "./types.js";
 const DEFAULT_MODEL = "gpt-4o";
 const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_TIMEOUT_MS = 300_000;
-const ENDPOINT = "https://api.openai.com/v1/chat/completions";
+const DEFAULT_ENDPOINT = "https://api.openai.com/v1/chat/completions";
 const MAX_RETRIES = 5;
 const INITIAL_BACKOFF_MS = 1000;
 
@@ -11,19 +11,34 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function resolveEndpoint(): string {
+  const base = process.env.OPENAI_BASE_URL;
+  if (base) {
+    const normalized = base.endsWith("/") ? base.slice(0, -1) : base;
+    return `${normalized}/chat/completions`;
+  }
+  return DEFAULT_ENDPOINT;
+}
+
 export class OpenAIProvider implements Provider {
   readonly name = "openai";
   private readonly apiKey: string;
+  private readonly endpoint: string;
   private readonly model: string;
   private readonly maxTokens: number;
   private readonly timeout: number;
 
   constructor(options: ProviderOptions = {}) {
+    this.endpoint = resolveEndpoint();
+    const isCustomEndpoint = this.endpoint !== DEFAULT_ENDPOINT;
     const key = process.env.OPENAI_API_KEY;
-    if (!key) {
-      throw new Error("OPENAI_API_KEY environment variable is required for the openai provider.");
+    if (!key && !isCustomEndpoint) {
+      throw new Error(
+        "OPENAI_API_KEY environment variable is required for the openai provider. " +
+        "For local servers (LM Studio, llama.cpp, vLLM), set OPENAI_BASE_URL instead."
+      );
     }
-    this.apiKey = key;
+    this.apiKey = key ?? "not-needed";
     this.model = options.model ?? DEFAULT_MODEL;
     this.maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
     this.timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
@@ -44,7 +59,7 @@ export class OpenAIProvider implements Provider {
       const timer = setTimeout(() => controller.abort(), this.timeout);
 
       try {
-        const response = await fetch(ENDPOINT, {
+        const response = await fetch(this.endpoint, {
           method: "POST",
           headers: {
             authorization: `Bearer ${this.apiKey}`,
