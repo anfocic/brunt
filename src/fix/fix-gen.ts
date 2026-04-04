@@ -189,6 +189,19 @@ export async function fixAndVerify(
       const result = await verifyFix(test.filePath);
 
       if (result.passed) {
+        // Mutation check: revert to buggy code and confirm test fails
+        await rollbackFix(finding.file, originalContent);
+        const mutationResult = await verifyFix(test.filePath);
+        // Restore the fix for the return
+        await writeFile(finding.file, patchedContent, "utf-8");
+
+        if (mutationResult.passed) {
+          // Test passes even with buggy code — it's not testing the right thing
+          await rollbackFix(finding.file, originalContent);
+          previousFailure = "Mutation check failed: test passes even after reverting the fix. The test may not be exercising the bug.";
+          continue;
+        }
+
         const diff = generateDiff(originalContent, patchedContent, finding.file);
         return {
           finding,

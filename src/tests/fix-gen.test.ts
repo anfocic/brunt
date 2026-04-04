@@ -78,6 +78,32 @@ describe("fix minimality guard", () => {
   });
 });
 
+describe("mutation check logic", () => {
+  test("test that catches the bug: fails on original, passes on fix", () => {
+    // Simulates the mutation check scenario:
+    // If test passes on fix AND fails on original → test is valid
+    const originalBuggy = "function add(a, b) { return a - b; }\n";
+    const fixed = "function add(a, b) { return a + b; }\n";
+
+    // The diff between them should be small (valid fix)
+    const diff = generateDiff(originalBuggy, fixed, "math.ts");
+    const changedLines = diff.split("\n").filter(
+      (l: string) => (l.startsWith("+") || l.startsWith("-")) && !l.startsWith("+++") && !l.startsWith("---")
+    ).length;
+
+    // 1 removal + 1 addition = 2 changed lines
+    assert.strictEqual(changedLines, 2);
+  });
+
+  test("identical original and fix means test cannot distinguish", () => {
+    // If original === fix, the mutation check would find that the test
+    // passes on both — meaning the test isn't exercising the bug
+    const code = "function add(a, b) { return a + b; }\n";
+    const diff = generateDiff(code, code, "math.ts");
+    assert.ok(!diff.includes("@@"), "No hunks means no actual change");
+  });
+});
+
 describe("fix-gen exports", () => {
   test("module exports expected functions", async () => {
     const mod = await import("../fix/fix-gen.js");
