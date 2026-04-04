@@ -26,7 +26,7 @@ export function computeCacheKey(
   hash.update(model ?? "");
   for (const v of [...vectors].sort((a, b) => a.name.localeCompare(b.name))) {
     hash.update(v.name);
-    hash.update(v.analyze.toString());
+    hash.update(v.promptHash ?? v.name);
   }
 
   const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path));

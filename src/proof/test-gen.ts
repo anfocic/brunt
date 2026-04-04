@@ -167,7 +167,7 @@ export async function verifyTests(
     tests,
     async (test) => {
       const { cmd, args } = await detectTestCommand(test.filePath);
-      const result = await exec(cmd, args, { timeout: 30_000 });
+      const result = await exec(cmd, args, { timeout: 30_000, maxBuffer: 1024 * 1024 });
       const failed = result.exitCode !== 0;
       return {
         test,

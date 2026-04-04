@@ -20,6 +20,7 @@ import {
 const API_CONCURRENCY = 5;
 const BATCH_TOKEN_BUDGET = 4000; // max estimated tokens per batch
 const SOLO_FILE_THRESHOLD = 2000; // files above this go alone
+const VECTOR_TIMEOUT = 120_000; // 2 minutes per vector batch
 
 async function runWithConcurrency<T>(
   tasks: (() => Promise<T>)[],
@@ -205,7 +206,12 @@ export async function scanEngine(
           const ctx = context.get(file.path);
           if (ctx) batchContext.set(file.path, ctx);
         }
-        return vector.analyze(batch, batchContext, provider, crossRefs);
+        return Promise.race([
+          vector.analyze(batch, batchContext, provider, crossRefs),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Vector "${vector.name}" timed out`)), VECTOR_TIMEOUT)
+          ),
+        ]);
       });
       const perBatchResults = await runWithConcurrency(tasks, concurrency);
       const findings = perBatchResults.flatMap((r) =>

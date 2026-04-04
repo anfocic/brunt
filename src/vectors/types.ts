@@ -37,6 +37,7 @@ export type ScanReport = {
 export interface Vector {
   name: string;
   description: string;
+  promptHash?: string; // stable hash for cache key — avoids unreliable function.toString()
   analyze(
     files: DiffFile[],
     context: Map<string, string>,

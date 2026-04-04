@@ -58,6 +58,16 @@ export async function verifyCanaryWithLlm(
   findings: Finding[],
   provider: Provider
 ): Promise<boolean> {
+  // Primary check: structural match — does any finding reference the canary file or keyword?
+  const structuralMatch = findings.some(
+    (f) =>
+      f.file === canary.file ||
+      f.title.includes(canary.keyword) ||
+      f.description.includes(canary.keyword)
+  );
+  if (!structuralMatch) return false;
+
+  // Secondary check: LLM verification (only if structural match passed)
   const findingsSummary = findings
     .map((f) => `- [${f.file}:${f.line}] ${f.title}`)
     .join("\n");

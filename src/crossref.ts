@@ -75,7 +75,10 @@ export async function findCrossReferences(
     ? [`${packageRoot}/**/*.ts`, `${packageRoot}/**/*.js`, `${packageRoot}/**/*.tsx`, `${packageRoot}/**/*.jsx`, `${packageRoot}/**/*.py`, `${packageRoot}/**/*.go`, `${packageRoot}/**/*.rs`, `${packageRoot}/**/*.rb`, `${packageRoot}/**/*.java`, `${packageRoot}/**/*.kt`]
     : ["*.ts", "*.js", "*.tsx", "*.jsx", "*.py", "*.go", "*.rs", "*.rb", "*.java", "*.kt"];
 
-  for (const symbol of symbols) {
+  // Validate symbols to prevent injection via malicious diffs
+  const validSymbols = symbols.filter((s) => /^[a-zA-Z_$]\w*$/.test(s));
+
+  for (const symbol of validSymbols) {
     if (matches.length >= MAX_MATCHES) break;
 
     const { stdout, exitCode } = await exec(

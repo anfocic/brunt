@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, realpath } from "node:fs/promises";
 import { execFile, execFileSync } from "node:child_process";
 import { resolve, relative, isAbsolute } from "node:path";
 import type { Finding } from "../vectors/types.js";
@@ -62,17 +62,28 @@ Respond with ONLY the corrected file content, no markdown fences, no explanation
   return prompt;
 }
 
-function validateFilePath(filePath: string): void {
+async function validateFilePath(filePath: string): Promise<void> {
   const cwd = process.cwd();
   const resolved = resolve(cwd, filePath);
   const rel = relative(cwd, resolved);
   if (isAbsolute(rel) || rel.startsWith("..")) {
     throw new Error(`Fix path escapes project root: ${filePath}`);
   }
+  // Resolve symlinks to prevent symlink traversal attacks
+  try {
+    const realResolved = await realpath(resolved);
+    const realCwd = await realpath(cwd);
+    if (!realResolved.startsWith(realCwd + "/") && realResolved !== realCwd) {
+      throw new Error(`Fix path escapes project root via symlink: ${filePath}`);
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("escapes project root")) throw err;
+    // File doesn't exist yet — path validation above is sufficient
+  }
 }
 
 async function applyFix(filePath: string, patchedContent: string): Promise<string> {
-  validateFilePath(filePath);
+  await validateFilePath(filePath);
   const original = await readFile(filePath, "utf-8");
   await writeFile(filePath, patchedContent, "utf-8");
   return original;
@@ -132,7 +143,7 @@ export async function fixAndVerify(
   maxRetries = 2
 ): Promise<FixVerification> {
   try {
-    validateFilePath(finding.file);
+    await validateFilePath(finding.file);
   } catch {
     return {
       finding,
@@ -167,6 +178,13 @@ export async function fixAndVerify(
 
     if (!patchedContent || patchedContent.trim() === sourceCode.trim()) {
       previousFailure = "Generated fix was empty or identical to the original.";
+      continue;
+    }
+
+    // Guard against LLM returning wildly different content
+    const sizeDelta = Math.abs(patchedContent.length - sourceCode.length);
+    if (sizeDelta > sourceCode.length * 0.5 && sizeDelta > 500) {
+      previousFailure = "Generated fix changed more than 50% of the file — likely hallucinated.";
       continue;
     }
 

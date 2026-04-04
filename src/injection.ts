@@ -22,14 +22,25 @@ function looksLikeComment(line: string): boolean {
   return trimmed.startsWith("//") || trimmed.startsWith("#") || trimmed.startsWith("/*") || trimmed.startsWith("*");
 }
 
+// Patterns targeting the LLM directly — only fire on comments/docs where injection is intentional
+const TARGETED_PATTERNS = [
+  /\b(?:AI|assistant|model|reviewer|system|claude|gpt|llm)\b.*\b(?:ignore|skip|approve|pass|accept)/i,
+  /\bdo not (?:flag|report|analyze|scan|review)\b/i,
+  /\bfocus (?:on|your) (?:other|different)\b/i,
+  /\bsystem:\s/i,
+  /\bignore (?:previous|above|all) (?:instructions?|rules?|guidelines?)/i,
+];
+
 export function detectInjection(files: DiffFile[]): InjectionWarning[] {
   const warnings: InjectionWarning[] = [];
 
   for (const file of files) {
     for (const hunk of file.hunks) {
       for (const line of hunk.added) {
-        if (!looksLikeComment(line)) continue;
-        for (const pattern of INJECTION_PATTERNS) {
+        const isComment = looksLikeComment(line);
+        // Comments: check all patterns. Non-comments: only check targeted LLM-specific patterns.
+        const patterns = isComment ? INJECTION_PATTERNS : TARGETED_PATTERNS;
+        for (const pattern of patterns) {
           if (pattern.test(line)) {
             warnings.push({
               file: file.path,

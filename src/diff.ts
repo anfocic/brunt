@@ -70,7 +70,7 @@ const SENSITIVE_PATTERNS = [
 export function isSensitive(path: string, extraPatterns?: string[]): boolean {
   const filename = path.split("/").pop() ?? "";
   const patterns = [...SENSITIVE_PATTERNS, ...(extraPatterns ?? [])];
-  return patterns.some((p) => matchGlob(p, filename));
+  return patterns.some((p) => matchGlob(p, filename) || matchGlob(p, path));
 }
 
 function parseDiff(raw: string): DiffFile[] {

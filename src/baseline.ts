@@ -28,7 +28,7 @@ export function computeFingerprint(vector: string, f: Finding): string {
   return createHash("sha256")
     .update(`${vector}\0${f.file}\0${normalize(f.title)}`)
     .digest("hex")
-    .slice(0, 12);
+    .slice(0, 16);
 }
 
 export async function loadBaseline(path?: string): Promise<BaselineFile | null> {
@@ -56,7 +56,11 @@ export function filterBaselined(
   reports: VectorReport[],
   baseline: BaselineFile
 ): { filtered: VectorReport[]; suppressedCount: number } {
-  const fingerprints = new Set(baseline.entries.map((e) => e.fingerprint));
+  const fingerprints = new Set(
+    baseline.entries
+      .filter((e) => /^[a-f0-9]+$/.test(e.fingerprint))
+      .map((e) => e.fingerprint)
+  );
   let suppressedCount = 0;
 
   const filtered = reports.map((vr) => {

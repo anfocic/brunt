@@ -52,11 +52,13 @@ export function windowContext(content: string, file: DiffFile): string {
   }
 
   // Include ±WINDOW_SIZE around each hunk
+  // newStart is 1-indexed (from git diff @@ header), so newStart-1 converts to 0-indexed
   for (const hunk of file.hunks) {
     if (hunk.newStart === undefined) continue;
     const hunkLen = hunk.added.length + hunk.context.length;
-    const start = Math.max(0, hunk.newStart - 1 - WINDOW_SIZE);
-    const end = Math.min(lines.length, hunk.newStart - 1 + hunkLen + WINDOW_SIZE);
+    const hunkStart = hunk.newStart - 1; // convert to 0-indexed
+    const start = Math.max(0, hunkStart - WINDOW_SIZE);
+    const end = Math.min(lines.length, hunkStart + hunkLen + WINDOW_SIZE);
     for (let i = start; i < end; i++) {
       include.add(i);
     }

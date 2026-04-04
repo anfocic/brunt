@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { readFile, writeFile, rename } from "node:fs/promises";
 import type { DiffFile } from "./diff.js";
 import type { Finding, VectorReport } from "./vectors/types.js";
 
@@ -56,7 +56,10 @@ export async function saveIncrementalState(
   path = INCREMENTAL_PATH
 ): Promise<void> {
   try {
-    await writeFile(path, JSON.stringify(state, null, 2), "utf-8");
+    // Atomic write: write to temp file then rename to prevent corruption from concurrent scans
+    const tmpPath = `${path}.${randomBytes(4).toString("hex")}.tmp`;
+    await writeFile(tmpPath, JSON.stringify(state, null, 2), "utf-8");
+    await rename(tmpPath, path);
   } catch {
     // Non-fatal — incremental state write failure shouldn't break the scan
   }
@@ -111,6 +114,11 @@ export function mergeFindings(
 ): VectorReport[] {
   // Only include carried findings for files still in the diff
   const currentPaths = new Set(currentFiles.map((f) => f.path));
+  const dropped = carriedFindings.filter((pf) => !currentPaths.has(pf.finding.file));
+  if (dropped.length > 0) {
+    const files = [...new Set(dropped.map((pf) => pf.finding.file))];
+    console.error(`Note: ${dropped.length} finding(s) dropped — file(s) no longer in diff: ${files.join(", ")}`);
+  }
   const validCarried = carriedFindings.filter((pf) =>
     currentPaths.has(pf.finding.file)
   );

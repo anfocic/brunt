@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Vector } from "./types.js";
 import { parseFindings } from "./parse.js";
 import { buildDiffSection, buildContextSection, buildCrossRefSection, RESPONSE_FORMAT } from "./prompt.js";
@@ -11,9 +12,12 @@ export function createVector(
 ): Vector {
   const systemPrompt = `${promptBody}\n\n${RESPONSE_FORMAT}`;
 
+  const promptHash = createHash("sha256").update(systemPrompt).digest("hex").slice(0, 16);
+
   return {
     name,
     description,
+    promptHash,
     async analyze(files, context, provider, crossRefs) {
       if (files.length === 0) return [];
 

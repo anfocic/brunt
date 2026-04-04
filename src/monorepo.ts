@@ -133,7 +133,13 @@ export async function groupByPackage(files: DiffFile[]): Promise<PackageGroup[]>
   const rootGroup: PackageGroup = { name: "<root>", root: ".", manifest: "", files: [] };
 
   for (const file of files) {
-    const detected = await detectPackageRoot(file.path, gitRoot);
+    let detected: { root: string; manifest: string; name: string } | null;
+    try {
+      detected = await detectPackageRoot(file.path, gitRoot);
+    } catch {
+      rootGroup.files.push(file);
+      continue;
+    }
 
     if (!detected) {
       rootGroup.files.push(file);

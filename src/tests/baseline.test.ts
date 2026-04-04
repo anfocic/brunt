@@ -104,11 +104,11 @@ describe("computeFingerprint", () => {
     );
   });
 
-  test("produces 12-char hex string", () => {
+  test("produces 16-char hex string", () => {
     const f = makeFinding("src/api.ts", 42, "SQL injection");
     const fp = computeFingerprint("security", f);
-    assert.strictEqual(fp.length, 12);
-    assert.match(fp, /^[0-9a-f]{12}$/);
+    assert.strictEqual(fp.length, 16);
+    assert.match(fp, /^[0-9a-f]{16}$/);
   });
 });
 

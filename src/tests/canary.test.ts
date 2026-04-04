@@ -95,18 +95,32 @@ describe("verifyCanaryWithLlm", () => {
     assert.strictEqual(result, true);
   });
 
-  test("returns true for verbose yes response", async () => {
-    const result = await verifyCanaryWithLlm(canary, [], mockProvider("Yes, the canary was detected."));
+  test("returns true for verbose yes response with structural match", async () => {
+    const findings: Finding[] = [
+      { file: "src/app.canary.ts", line: 1, severity: "critical", title: "eval usage", description: "Uses eval", reproduction: "call it" },
+    ];
+    const result = await verifyCanaryWithLlm(canary, findings, mockProvider("Yes, the canary was detected."));
     assert.strictEqual(result, true);
   });
 
-  test("returns false when LLM says no", async () => {
-    const result = await verifyCanaryWithLlm(canary, [], mockProvider("no"));
+  test("returns false when no structural match even if LLM says yes", async () => {
+    const result = await verifyCanaryWithLlm(canary, [], mockProvider("yes"));
+    assert.strictEqual(result, false);
+  });
+
+  test("returns false when LLM says no despite structural match", async () => {
+    const findings: Finding[] = [
+      { file: "src/app.canary.ts", line: 1, severity: "critical", title: "eval usage", description: "Uses eval", reproduction: "call it" },
+    ];
+    const result = await verifyCanaryWithLlm(canary, findings, mockProvider("no"));
     assert.strictEqual(result, false);
   });
 
   test("returns false for unexpected response", async () => {
-    const result = await verifyCanaryWithLlm(canary, [], mockProvider("I'm not sure"));
+    const findings: Finding[] = [
+      { file: "src/app.canary.ts", line: 1, severity: "critical", title: "eval usage", description: "Uses eval", reproduction: "call it" },
+    ];
+    const result = await verifyCanaryWithLlm(canary, findings, mockProvider("I'm not sure"));
     assert.strictEqual(result, false);
   });
 });
