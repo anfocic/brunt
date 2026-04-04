@@ -67,9 +67,33 @@ brunt -- found 2 issues (14230ms)
 |---|---|
 | `correctness` | Edge cases, off-by-one, null handling, type coercion, logic errors, race conditions |
 | `security` | SQL injection, XSS, command injection, path traversal, SSRF, auth bypass, hardcoded secrets |
+| Custom | Define your own in `brunt.config.yaml` |
 
 ```bash
 brunt scan --vectors security   # run only security
+```
+
+### Custom Vectors
+
+Define domain-specific analysis vectors in `brunt.config.yaml`:
+
+```yaml
+vectors:
+  - name: api-compat
+    description: "Detects breaking API changes"
+    prompt: |
+      You are reviewing changes for backwards compatibility.
+      Focus on removed/renamed public functions, changed signatures,
+      changed return types, removed fields from objects.
+    severity: high             # optional: minimum severity floor
+    include: ["*.ts", "*.js"]  # optional: only analyze matching files
+    exclude: ["*.test.ts"]     # optional: skip matching files
+```
+
+Custom vectors get all built-in features (caching, batching, canary injection, streaming) for free. Select them by name with `--vectors`:
+
+```bash
+brunt scan --vectors correctness,api-compat
 ```
 
 ## Providers
@@ -102,6 +126,30 @@ OPENAI_API_KEY=sk-... brunt scan --provider openai        # OpenAI API
 OPENAI_BASE_URL=http://localhost:1234/v1 \
   brunt scan --provider openai --model my-local-model
 ```
+
+## Monorepo Support
+
+Brunt auto-detects package boundaries and scans each package in isolation:
+
+```bash
+brunt scan                          # auto-detect packages
+brunt scan --scope all              # treat as single project
+brunt scan --scope @myapp/api,web   # scan specific packages only
+```
+
+Detects `package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`, and other manifests. Context and cross-references are scoped per-package so the LLM doesn't see irrelevant code from other packages.
+
+## Incremental Scanning
+
+Skip unchanged files when re-scanning a PR:
+
+```bash
+brunt scan --incremental
+```
+
+On the first run, Brunt scans all files and saves per-file hashes to `.brunt-incremental.json`. On subsequent runs, only files with changed hunks are re-scanned — findings for unchanged files are carried forward. This saves tokens and time on iterative PR workflows.
+
+The state resets automatically if you change providers, models, or vectors.
 
 ## Prompt Injection Defense
 
@@ -139,20 +187,26 @@ brunt scan --format sarif > results.sarif   # SARIF (GitHub Code Scanning)
 ## Options
 
 ```
---diff <range>        Git diff range (default: HEAD~1, auto-detects in CI)
---provider <name>     LLM provider: claude-cli, anthropic, ollama, openai
---model <name>        Model name
---format <type>       Output: text, json, sarif
---fail-on <severity>  Exit 1 threshold: low, medium, high, critical (default: medium)
---vectors <list>      Comma-separated vectors to run
---no-tests            Skip proof test generation
---no-cache            Force fresh LLM analysis
---verify              Run proof tests, drop unverified findings
---fix                 Auto-generate and verify fixes
---fix-retries <n>     Max fix attempts (1-5, default: 2)
---pr                  Create PR with verified fixes
---pr-comment          Post findings as GitHub PR review comments
---max-tokens <n>      Max tokens per LLM call
+--diff <range>           Git diff range (default: HEAD~1, auto-detects in CI)
+--provider <name>        LLM provider: claude-cli, anthropic, ollama, openai
+--model <name>           Model name
+--format <type>          Output: text, json, sarif
+--fail-on <severity>     Exit 1 threshold: low, medium, high, critical (default: medium)
+--vectors <list>         Comma-separated vectors to run (built-in + custom)
+--no-tests               Skip proof test generation
+--no-cache               Force fresh LLM analysis
+--no-baseline            Ignore baseline, show all findings
+--baseline-path <f>      Path to baseline file (default: .brunt-baseline.json)
+--verify                 Run proof tests, drop unverified findings
+--fix                    Auto-generate and verify fixes
+--fix-retries <n>        Max fix attempts (1-5, default: 2)
+--pr                     Create PR with verified fixes
+--pr-comment             Post findings as GitHub PR review comments
+--max-tokens <n>         Max tokens per LLM call
+--scope <value>          Monorepo: auto, all, or pkg1,pkg2 (default: auto)
+--config <path>          Path to brunt.config.yaml (auto-detected by default)
+--incremental            Reuse findings for unchanged files across runs
+--incremental-path <f>   Path to incremental state file
 ```
 
 ## License

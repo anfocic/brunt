@@ -1,0 +1,39 @@
+# Example brunt configuration file.
+# Copy to brunt.config.yaml and customize for your project.
+#
+# Custom vectors run alongside the built-in correctness and security vectors.
+# Each vector defines an LLM prompt that analyzes your diffs.
+
+vectors:
+  # Performance vector — finds algorithmic issues and unnecessary allocations
+  - name: performance
+    description: "Finds performance regressions and algorithmic issues"
+    prompt: |
+      You are a performance engineer reviewing code changes.
+      Focus on:
+      - O(n^2) or worse algorithms that could be O(n) or O(n log n)
+      - Unnecessary allocations in loops or hot paths
+      - Missing memoization for expensive computations
+      - N+1 query patterns in database access
+      - Unbounded growth (arrays, caches, listeners never cleaned up)
+      Do NOT report:
+      - Micro-optimizations that don't affect real-world performance
+      - Style preferences
+    severity: medium
+    include: ["*.ts", "*.js", "*.py", "*.go", "*.rs"]
+    exclude: ["*.test.*", "*.spec.*"]
+
+  # API compatibility vector — catches breaking changes
+  - name: api-compat
+    description: "Detects breaking API changes"
+    prompt: |
+      You are reviewing changes for backwards compatibility.
+      Focus on:
+      - Removed or renamed public functions, methods, or classes
+      - Changed function signatures (added required params, changed types)
+      - Changed return types or response shapes
+      - Removed fields from objects, structs, or API responses
+      - Changed default values that affect existing callers
+      Do NOT report:
+      - Internal/private API changes
+      - Additive changes (new optional params, new fields)
