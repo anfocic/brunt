@@ -170,6 +170,19 @@ export async function fixAndVerify(
       continue;
     }
 
+    // Fix minimality guard: reject disproportionately large fixes
+    const fixDiff = generateDiff(sourceCode, patchedContent, finding.file);
+    const fixChangedLines = fixDiff.split("\n").filter(
+      (l) => (l.startsWith("+") || l.startsWith("-")) && !l.startsWith("+++") && !l.startsWith("---")
+    ).length;
+    const sourceLineCount = sourceCode.split("\n").length;
+    const maxChangedLines = Math.max(10, Math.round(sourceLineCount * 0.5));
+
+    if (fixChangedLines > maxChangedLines) {
+      previousFailure = `Fix too large: ${fixChangedLines} changed lines (max ${maxChangedLines}). A targeted fix should change fewer lines.`;
+      continue;
+    }
+
     const originalContent = await applyFix(finding.file, patchedContent);
 
     try {
