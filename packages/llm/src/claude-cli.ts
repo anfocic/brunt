@@ -2,6 +2,12 @@ import { execFile, spawn } from "node:child_process";
 import type { Provider, ClaudeCliOptions, LlmResponse } from "./types.js";
 
 const DEFAULT_TIMEOUT_MS = 300_000;
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 2000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export class ClaudeCliProvider implements Provider {
   readonly name = "claude-cli";
@@ -18,6 +24,24 @@ export class ClaudeCliProvider implements Provider {
   async query(prompt: string): Promise<string> {
     const args = this.buildArgs(prompt);
 
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        return await this.execClaude(args);
+      } catch (err) {
+        // Don't retry permanent errors
+        const msg = err instanceof Error ? err.message : "";
+        if (msg.includes("not found") || msg.includes("timed out")) throw err;
+        if (attempt < MAX_RETRIES) {
+          await sleep(RETRY_DELAY_MS * Math.pow(2, attempt));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error("claude-cli: max retries exceeded");
+  }
+
+  private execClaude(args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
       execFile("claude", args, { maxBuffer: 10 * 1024 * 1024, timeout: this.timeout }, (error, stdout, stderr) => {
         if (error) {

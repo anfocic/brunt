@@ -11,7 +11,8 @@ function filterFiles(
 ): DiffFile[] {
   let filtered = files;
 
-  if (include && include.length > 0) {
+  if (include) {
+    if (include.length === 0) return []; // empty include = include nothing
     filtered = filtered.filter((f) =>
       include.some((pattern) => matchGlob(pattern, f.path))
     );

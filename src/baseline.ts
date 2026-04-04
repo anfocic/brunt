@@ -35,7 +35,10 @@ export async function loadBaseline(path?: string): Promise<BaselineFile | null> 
   try {
     const raw = await readFile(path ?? BASELINE_PATH, "utf-8");
     const data = JSON.parse(raw) as BaselineFile;
-    if (data.version !== BASELINE_VERSION) return null;
+    if (data.version !== BASELINE_VERSION) {
+      console.error(`Warning: baseline file version mismatch (got ${data.version}, expected ${BASELINE_VERSION}). Baseline suppression disabled.`);
+      return null;
+    }
     if (!Array.isArray(data.entries)) return null;
     return data;
   } catch {

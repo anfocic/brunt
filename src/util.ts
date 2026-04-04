@@ -63,8 +63,9 @@ export function matchGlob(pattern: string, target: string): boolean {
 
 const CODE_STARTERS = [
   "import ", "const ", "let ", "var ", "function ", "class ", "export ",
-  "describe(", "test(", "it(", "from ", "use ", "#", "pub ", "def ",
-  "package ", "module ", "async ", "type ", "interface ",
+  "describe(", "test(", "it(", "from ", "use ", "#", "//", "/*", "pub ", "def ",
+  "package ", "module ", "async ", "type ", "interface ", "struct ", "enum ",
+  "fn ", "impl ", "trait ", "mod ", "use ", "@", "pragma ",
 ];
 
 function looksLikeCode(line: string): boolean {

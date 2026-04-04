@@ -249,9 +249,11 @@ export async function scanEngine(
     }
   }
 
+  // Filter canary findings — use word-boundary match to avoid dropping real findings
+  const canaryPattern = new RegExp(`\\b${canary.keyword}\\b`);
   for (const vr of vectorReports) {
     vr.findings = vr.findings.filter(
-      (f) => f.file !== canary.file && !f.title.includes(canary.keyword) && !f.description.includes(canary.keyword)
+      (f) => f.file !== canary.file && !canaryPattern.test(f.title) && !canaryPattern.test(f.description)
     );
   }
 
