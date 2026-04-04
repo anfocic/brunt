@@ -9,6 +9,7 @@ export type Args = {
   format: "text" | "json" | "sarif";
   failOn: "low" | "medium" | "high" | "critical";
   vectors?: string[];
+  scope?: string;
   noTests: boolean;
   noCache: boolean;
   noBaseline: boolean;
@@ -60,6 +61,7 @@ export function parseArgs(argv: string[]): Args {
   let baselinePath: string | undefined;
   let maxTokens: number | undefined;
   let model: string | undefined;
+  let scope: string | undefined;
   let fix = false;
   let fixRetries: number | undefined;
   let pr = false;
@@ -125,6 +127,9 @@ export function parseArgs(argv: string[]): Args {
       }
       fixRetries = n;
       i++;
+    } else if (arg === "--scope" && next) {
+      scope = next;
+      i++;
     } else if (arg === "--verify") {
       verify = true;
     } else if (arg === "--help" || arg === "-h") {
@@ -142,6 +147,7 @@ export function parseArgs(argv: string[]): Args {
     format: format ?? "text",
     failOn: failOn ?? "medium",
     vectors,
+    scope,
     noTests,
     noCache,
     noBaseline,
@@ -178,6 +184,7 @@ OPTIONS
   --format <type>       Output format: text, json, sarif (default: text)
   --fail-on <severity>  Exit 1 at this severity: low, medium, high, critical (default: medium)
   --vectors <list>      Comma-separated vectors to run (default: all)
+  --scope <path>        Only scan files under this path (auto-detects in monorepos)
   --no-tests            Skip proof test generation
   --no-cache            Skip cache, force fresh LLM analysis
   --no-baseline         Ignore baseline, show all findings

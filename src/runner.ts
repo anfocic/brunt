@@ -15,6 +15,7 @@ import { Spinner, ProgressBoard, printBanner } from "./tui.js";
 import { findingKey } from "./util.js";
 import { scanEngine, type ProgressEvent } from "./engine.js";
 import { loadBaseline, saveBaseline, filterBaselined, computeFingerprint, BASELINE_PATH, type BaselineEntry } from "./baseline.js";
+import { filterByScope, detectScope } from "./scope.js";
 
 const ALL_VECTORS: Vector[] = [correctness, security];
 
@@ -53,7 +54,28 @@ export async function run(args: Args): Promise<number> {
   const spinner = new Spinner("Parsing diff...");
   spinner.start();
 
-  const files = await getDiff(args.diff);
+  const allFiles = await getDiff(args.diff);
+
+  // Monorepo scoping
+  let files = allFiles;
+  let scopeUsed: string | null = null;
+
+  if (args.scope === ".") {
+    // Explicit "scan everything"
+  } else if (args.scope) {
+    files = filterByScope(allFiles, args.scope);
+    scopeUsed = args.scope;
+  } else {
+    const detected = detectScope(allFiles);
+    if (detected) {
+      files = filterByScope(allFiles, detected);
+      scopeUsed = detected;
+    }
+  }
+
+  if (scopeUsed) {
+    spinner.succeed(`Scoped to ${scopeUsed} (${files.length}/${allFiles.length} file${allFiles.length === 1 ? "" : "s"}).`);
+  }
 
   if (files.length === 0) {
     spinner.succeed("No code changes found in diff.");
@@ -264,7 +286,28 @@ export async function runBaseline(args: Args): Promise<number> {
   const spinner = new Spinner("Parsing diff...");
   spinner.start();
 
-  const files = await getDiff(args.diff);
+  const allBaselineFiles = await getDiff(args.diff);
+
+  // Monorepo scoping
+  let files = allBaselineFiles;
+  let scopeUsed: string | null = null;
+
+  if (args.scope === ".") {
+    // Explicit "scan everything"
+  } else if (args.scope) {
+    files = filterByScope(allBaselineFiles, args.scope);
+    scopeUsed = args.scope;
+  } else {
+    const detected = detectScope(allBaselineFiles);
+    if (detected) {
+      files = filterByScope(allBaselineFiles, detected);
+      scopeUsed = detected;
+    }
+  }
+
+  if (scopeUsed) {
+    spinner.succeed(`Scoped to ${scopeUsed} (${files.length}/${allBaselineFiles.length} file${allBaselineFiles.length === 1 ? "" : "s"}).`);
+  }
 
   if (files.length === 0) {
     spinner.succeed("No code changes found in diff.");
