@@ -16,14 +16,30 @@ import { findingKey } from "./util.js";
 import { scanEngine, type ProgressEvent } from "./engine.js";
 import { loadBaseline, saveBaseline, filterBaselined, computeFingerprint, BASELINE_PATH, type BaselineEntry } from "./baseline.js";
 import { filterByScope, detectScope } from "./scope.js";
+import { loadConfig } from "./config.js";
+import { createVector } from "./vectors/factory.js";
 
-const ALL_VECTORS: Vector[] = [correctness, security];
+const BUILTIN_VECTORS: Vector[] = [correctness, security];
+const BUILTIN_NAMES = new Set(BUILTIN_VECTORS.map((v) => v.name));
 
-function getVectors(names?: string[]): Vector[] {
-  if (!names || names.length === 0) return ALL_VECTORS;
+async function loadAllVectors(configPath?: string): Promise<Vector[]> {
+  const config = await loadConfig(configPath);
+  const custom = (config.vectors ?? []).map((def) => {
+    if (BUILTIN_NAMES.has(def.name)) {
+      throw new Error(
+        `Custom vector "${def.name}" conflicts with built-in vector. Choose a different name.`
+      );
+    }
+    return createVector(def.name, def.description, def.prompt);
+  });
+  return [...BUILTIN_VECTORS, ...custom];
+}
+
+function getVectors(all: Vector[], names?: string[]): Vector[] {
+  if (!names || names.length === 0) return all;
   return names.map((name) => {
-    const v = ALL_VECTORS.find((v) => v.name === name);
-    if (!v) throw new Error(`Unknown vector: "${name}". Available: ${ALL_VECTORS.map((v) => v.name).join(", ")}`);
+    const v = all.find((v) => v.name === name);
+    if (!v) throw new Error(`Unknown vector: "${name}". Available: ${all.map((v) => v.name).join(", ")}`);
     return v;
   });
 }
@@ -48,7 +64,8 @@ export async function run(args: Args): Promise<number> {
     maxTokens: args.maxTokens,
     model: args.model,
   });
-  const vectors = getVectors(args.vectors);
+  const allVectors = await loadAllVectors(args.configPath);
+  const vectors = getVectors(allVectors, args.vectors);
   const scanStart = performance.now();
 
   const spinner = new Spinner("Parsing diff...");
@@ -281,7 +298,8 @@ export async function runBaseline(args: Args): Promise<number> {
     maxTokens: args.maxTokens,
     model: args.model,
   });
-  const vectors = getVectors(args.vectors);
+  const allVectors = await loadAllVectors(args.configPath);
+  const vectors = getVectors(allVectors, args.vectors);
 
   const spinner = new Spinner("Parsing diff...");
   spinner.start();

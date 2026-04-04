@@ -10,6 +10,7 @@ export type Args = {
   failOn: "low" | "medium" | "high" | "critical";
   vectors?: string[];
   scope?: string;
+  configPath?: string;
   noTests: boolean;
   noCache: boolean;
   noBaseline: boolean;
@@ -62,6 +63,7 @@ export function parseArgs(argv: string[]): Args {
   let maxTokens: number | undefined;
   let model: string | undefined;
   let scope: string | undefined;
+  let configPath: string | undefined;
   let fix = false;
   let fixRetries: number | undefined;
   let pr = false;
@@ -130,6 +132,9 @@ export function parseArgs(argv: string[]): Args {
     } else if (arg === "--scope" && next) {
       scope = next;
       i++;
+    } else if (arg === "--config" && next) {
+      configPath = next;
+      i++;
     } else if (arg === "--verify") {
       verify = true;
     } else if (arg === "--help" || arg === "-h") {
@@ -148,6 +153,7 @@ export function parseArgs(argv: string[]): Args {
     failOn: failOn ?? "medium",
     vectors,
     scope,
+    configPath,
     noTests,
     noCache,
     noBaseline,
@@ -185,6 +191,7 @@ OPTIONS
   --fail-on <severity>  Exit 1 at this severity: low, medium, high, critical (default: medium)
   --vectors <list>      Comma-separated vectors to run (default: all)
   --scope <path>        Only scan files under this path (auto-detects in monorepos)
+  --config <path>       Path to brunt.config.yaml (default: auto-detect)
   --no-tests            Skip proof test generation
   --no-cache            Skip cache, force fresh LLM analysis
   --no-baseline         Ignore baseline, show all findings

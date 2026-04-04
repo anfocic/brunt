@@ -1,0 +1,40 @@
+# brunt.config.yaml — Custom vector definitions
+# Place this file in your project root.
+#
+# Custom vectors are merged with the built-in vectors (correctness, security).
+# Select which vectors to run with: brunt scan --vectors billing,security
+
+vectors:
+  - name: billing
+    description: "Checks billing and payment logic for correctness"
+    prompt: |
+      You are reviewing code changes that may affect billing, payments, or pricing logic.
+
+      Focus on:
+      - Incorrect price calculations (rounding errors, currency handling)
+      - Double-charging or missed charges
+      - Subscription state machine bugs
+      - Race conditions in payment processing
+      - Off-by-one errors in trial/billing periods
+
+      Do NOT report:
+      - General code quality issues
+      - Security issues unrelated to payment logic
+      - Style or formatting
+
+  - name: api-compat
+    description: "Detects breaking changes in public API surfaces"
+    prompt: |
+      You are reviewing code changes for backwards compatibility of public APIs.
+
+      Focus on:
+      - Removed or renamed exported functions/types
+      - Changed function signatures (new required params, removed params)
+      - Changed return types
+      - Changed error types or error conditions
+      - Semantic changes that break existing callers
+
+      Do NOT report:
+      - Internal/private API changes
+      - Additive changes (new optional params, new exports)
+      - Documentation changes
