@@ -25,17 +25,20 @@ export class OllamaProvider implements Provider {
   }
 
   async queryRich(system: string | undefined, userPrompt: string): Promise<LlmResponse> {
-    const prompt = system ? `${system}\n\n${userPrompt}` : userPrompt;
+    const messages: Array<{ role: string; content: string }> = [];
+    if (system) messages.push({ role: "system", content: system });
+    messages.push({ role: "user", content: userPrompt });
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      const response = await fetch(`${this.host}/api/generate`, {
+      const response = await fetch(`${this.host}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: this.model,
-          prompt,
+          messages,
           stream: false,
           options: { num_predict: this.maxTokens },
         }),
@@ -48,16 +51,17 @@ export class OllamaProvider implements Provider {
       }
 
       const data = (await response.json()) as {
-        response: string;
+        message?: { content?: string };
         prompt_eval_count?: number;
         eval_count?: number;
       };
-      if (!data.response) {
+      const text = data.message?.content ?? "";
+      if (!text) {
         throw new Error("No response content from Ollama API.");
       }
 
       return {
-        text: data.response,
+        text,
         usage: {
           input_tokens: data.prompt_eval_count ?? 0,
           output_tokens: data.eval_count ?? 0,
@@ -82,16 +86,20 @@ export class OllamaProvider implements Provider {
   }
 
   async *queryStream(prompt: string): AsyncIterable<string> {
+    const messages: Array<{ role: string; content: string }> = [
+      { role: "user", content: prompt },
+    ];
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      const response = await fetch(`${this.host}/api/generate`, {
+      const response = await fetch(`${this.host}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: this.model,
-          prompt,
+          messages,
           stream: true,
           options: { num_predict: this.maxTokens },
         }),
@@ -120,8 +128,8 @@ export class OllamaProvider implements Provider {
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
-            const data = JSON.parse(line) as { response?: string; done?: boolean };
-            if (data.response) yield data.response;
+            const data = JSON.parse(line) as { message?: { content?: string }; done?: boolean };
+            if (data.message?.content) yield data.message.content;
             if (data.done) return;
           } catch {}
         }

@@ -25,6 +25,10 @@ export class ClaudeCliProvider implements Provider {
             reject(new Error(`claude-cli timed out after ${this.timeout / 1000}s`));
             return;
           }
+          if ("code" in error && error.code === "ENOENT") {
+            reject(new Error('claude-cli: "claude" command not found. Is Claude Code installed?'));
+            return;
+          }
           reject(new Error(`claude-cli failed: ${(stderr ?? "").trim() || error.message}`));
           return;
         }
@@ -43,12 +47,29 @@ export class ClaudeCliProvider implements Provider {
     const args = this.buildArgs(prompt);
     const child = spawn("claude", args, { stdio: ["pipe", "pipe", "pipe"] });
     const timeout = setTimeout(() => child.kill(), this.timeout);
+    let killed = false;
+
+    child.on("error", (err: NodeJS.ErrnoException) => {
+      clearTimeout(timeout);
+      if (err.code === "ENOENT") {
+        throw new Error('claude-cli: "claude" command not found. Is Claude Code installed?');
+      }
+    });
+
+    const origKill = child.kill.bind(child);
+    child.kill = (...killArgs: Parameters<typeof child.kill>) => {
+      killed = true;
+      return origKill(...killArgs);
+    };
 
     try {
       if (child.stdout) {
         for await (const chunk of child.stdout) {
           yield chunk.toString();
         }
+      }
+      if (killed) {
+        throw new Error(`claude-cli timed out after ${this.timeout / 1000}s`);
       }
     } finally {
       clearTimeout(timeout);
