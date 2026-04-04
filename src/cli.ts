@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-import { run } from "./runner.js";
+import { run, runBaseline } from "./runner.js";
 
 export type Args = {
+  command: "scan" | "baseline";
   diff: string;
   provider: string;
   format: "text" | "json" | "sarif";
@@ -10,9 +11,11 @@ export type Args = {
   vectors?: string[];
   noTests: boolean;
   noCache: boolean;
+  noBaseline: boolean;
   prComment: boolean;
   maxTokens?: number;
   model?: string;
+  baselinePath?: string;
   concurrency: number;
   fix: boolean;
   fixRetries: number;
@@ -39,11 +42,11 @@ export function parseArgs(argv: string[]): Args {
     process.exit(0);
   }
 
-  if (command !== "scan" && !command.startsWith("--")) {
+  if (command !== "scan" && command !== "baseline" && !command.startsWith("--")) {
     throw new Error(`Unknown command: ${command}. Run "brunt help" for usage.`);
   }
 
-  const startIdx = command === "scan" ? 1 : 0;
+  const startIdx = command === "scan" || command === "baseline" ? 1 : 0;
 
   let diff: string | undefined;
   let provider: string | undefined;
@@ -52,7 +55,9 @@ export function parseArgs(argv: string[]): Args {
   let vectors: string[] | undefined;
   let noTests = false;
   let noCache = false;
+  let noBaseline = false;
   let prComment = false;
+  let baselinePath: string | undefined;
   let maxTokens: number | undefined;
   let model: string | undefined;
   let fix = false;
@@ -92,6 +97,11 @@ export function parseArgs(argv: string[]): Args {
       noTests = true;
     } else if (arg === "--no-cache") {
       noCache = true;
+    } else if (arg === "--no-baseline") {
+      noBaseline = true;
+    } else if (arg === "--baseline-path" && next) {
+      baselinePath = next;
+      i++;
     } else if (arg === "--pr-comment") {
       prComment = true;
     } else if (arg === "--max-tokens" && next) {
@@ -126,6 +136,7 @@ export function parseArgs(argv: string[]): Args {
   }
 
   return {
+    command: (command === "baseline" ? "baseline" : "scan") as Args["command"],
     diff: diff ?? detectDefaultDiff(),
     provider: provider ?? "claude-cli",
     format: format ?? "text",
@@ -133,9 +144,11 @@ export function parseArgs(argv: string[]): Args {
     vectors,
     noTests,
     noCache,
+    noBaseline,
     prComment,
     maxTokens,
     model,
+    baselinePath,
     concurrency: 3,
     fix,
     fixRetries: fixRetries ?? 2,
@@ -150,10 +163,12 @@ brunt - adversarial AI code review
 
 USAGE
   brunt scan [options]
+  brunt baseline [options]
   brunt help
 
 COMMANDS
   scan       Analyze a diff for bugs and vulnerabilities (default)
+  baseline   Run scan and save findings as suppression baseline
   help       Show this help
 
 OPTIONS
@@ -165,6 +180,8 @@ OPTIONS
   --vectors <list>      Comma-separated vectors to run (default: all)
   --no-tests            Skip proof test generation
   --no-cache            Skip cache, force fresh LLM analysis
+  --no-baseline         Ignore baseline, show all findings
+  --baseline-path <f>   Path to baseline file (default: .brunt-baseline.json)
   --pr-comment          Post findings as GitHub PR review comments
   --max-tokens <n>      Maximum tokens per LLM call
   --verify              Run proof tests and drop findings that can't be reproduced
@@ -177,7 +194,9 @@ OPTIONS
 async function main() {
   try {
     const args = parseArgs(process.argv);
-    const exitCode = await run(args);
+    const exitCode = args.command === "baseline"
+      ? await runBaseline(args)
+      : await run(args);
     process.exit(exitCode);
   } catch (err) {
     console.error(`brunt error: ${err instanceof Error ? err.message : err}`);

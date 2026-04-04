@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { shouldFail, formatJson, formatSarif } from "../reporter.js";
+import { shouldFail, formatJson, formatSarif, formatText } from "../reporter.js";
 import type { Finding, ScanReport } from "../vectors/types.js";
 import type { GeneratedTest } from "../proof/test-gen.js";
 
@@ -226,5 +226,52 @@ describe("formatSarif", () => {
     };
     const parsed = JSON.parse(formatSarif(report, []));
     assert.notStrictEqual(parsed.runs[0].results[0].ruleId, parsed.runs[0].results[1].ruleId);
+  });
+
+  test("includes baseline properties when suppressedCount > 0", () => {
+    const report = makeReport([makeFinding("high")]);
+    const parsed = JSON.parse(formatSarif(report, [], 5));
+    assert.strictEqual(parsed.runs[0].properties.baseline.suppressedCount, 5);
+  });
+
+  test("omits baseline properties when suppressedCount is 0", () => {
+    const report = makeReport([makeFinding("high")]);
+    const parsed = JSON.parse(formatSarif(report, [], 0));
+    assert.strictEqual(parsed.runs[0].properties, undefined);
+  });
+});
+
+describe("formatJson baseline", () => {
+  test("includes suppressedByBaseline field", () => {
+    const report = makeReport([makeFinding("high")]);
+    const parsed = JSON.parse(formatJson(report, [], [], 3));
+    assert.strictEqual(parsed.suppressedByBaseline, 3);
+  });
+
+  test("suppressedByBaseline defaults to 0", () => {
+    const report = makeReport([makeFinding("high")]);
+    const parsed = JSON.parse(formatJson(report, []));
+    assert.strictEqual(parsed.suppressedByBaseline, 0);
+  });
+});
+
+describe("formatText baseline", () => {
+  test("shows suppressed count in dashboard when > 0", () => {
+    const report = makeReport([makeFinding("high")]);
+    const output = formatText(report, [], [], 3);
+    assert.ok(output.includes("3 suppressed by baseline"));
+  });
+
+  test("omits suppressed message when count is 0", () => {
+    const report = makeReport([makeFinding("high")]);
+    const output = formatText(report, [], [], 0);
+    assert.ok(!output.includes("suppressed by baseline"));
+  });
+
+  test("shows suppressed count on clean scan", () => {
+    const report = makeReport([]);
+    const output = formatText(report, [], [], 5);
+    assert.ok(output.includes("no issues found"));
+    assert.ok(output.includes("5 suppressed by baseline"));
   });
 });

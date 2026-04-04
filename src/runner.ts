@@ -13,6 +13,7 @@ import { createFixPr } from "./fix/pr.js";
 import { Spinner, ProgressBoard, printBanner } from "./tui.js";
 import { findingKey } from "./util.js";
 import { scanEngine, type ProgressEvent } from "./engine.js";
+import { loadBaseline, saveBaseline, filterBaselined, computeFingerprint, BASELINE_PATH, type BaselineEntry } from "./baseline.js";
 
 const ALL_VECTORS: Vector[] = [correctness, security];
 
@@ -111,6 +112,19 @@ export async function run(args: Args): Promise<number> {
     totalDuration: Math.round(performance.now() - scanStart),
   };
 
+  let suppressedCount = 0;
+  if (!args.noBaseline) {
+    const baseline = await loadBaseline(args.baselinePath);
+    if (baseline) {
+      const result = filterBaselined(vectorReports, baseline);
+      for (let i = 0; i < vectorReports.length; i++) {
+        vectorReports[i] = result.filtered[i];
+      }
+      report.totalFindings = vectorReports.reduce((sum, v) => sum + v.findings.length, 0);
+      suppressedCount = result.suppressedCount;
+    }
+  }
+
   let allFindings = vectorReports.flatMap((v) => v.findings);
   let tests: Awaited<ReturnType<typeof generateTests>> = [];
   let fixes: FixVerification[] = [];
@@ -167,10 +181,10 @@ export async function run(args: Args): Promise<number> {
 
   const output =
     args.format === "json"
-      ? formatJson(report, tests, fixes)
+      ? formatJson(report, tests, fixes, suppressedCount)
       : args.format === "sarif"
-        ? formatSarif(report, tests)
-        : formatText(report, tests, fixes);
+        ? formatSarif(report, tests, suppressedCount)
+        : formatText(report, tests, fixes, suppressedCount);
 
   process.stdout.write(output + "\n");
 
@@ -200,4 +214,81 @@ export async function run(args: Args): Promise<number> {
   }
 
   return shouldFail(allFindings, args.failOn) ? 1 : 0;
+}
+
+export async function runBaseline(args: Args): Promise<number> {
+  printBanner();
+  await checkGitRepo();
+  await checkProvider(args.provider, args.model);
+
+  const provider = getProvider(args.provider, {
+    maxTokens: args.maxTokens,
+    model: args.model,
+  });
+  const vectors = getVectors(args.vectors);
+
+  const spinner = new Spinner("Parsing diff...");
+  spinner.start();
+
+  const files = await getDiff(args.diff);
+
+  if (files.length === 0) {
+    spinner.succeed("No code changes found in diff.");
+    return 0;
+  }
+
+  spinner.succeed(`Parsed ${files.length} file${files.length === 1 ? "" : "s"}.`);
+
+  const board = new ProgressBoard(vectors.map((v) => v.name));
+  let boardStarted = false;
+
+  const { vectorReports } = await scanEngine(
+    {
+      files,
+      vectors,
+      provider,
+      noCache: args.noCache,
+      providerName: args.provider,
+      model: args.model,
+    },
+    (event: ProgressEvent) => {
+      switch (event.type) {
+        case "vectors-start":
+          process.stderr.write(`\n  Running ${event.total} vector${event.total === 1 ? "" : "s"} via ${provider.name}:\n\n`);
+          for (const v of vectors) board.update(v.name, "running");
+          boardStarted = true;
+          break;
+        case "vector-done":
+          board.update(event.name, "done", `${event.count} finding${event.count === 1 ? "" : "s"}`, event.duration);
+          break;
+        case "vector-failed":
+          board.update(event.name, "failed", event.message);
+          break;
+      }
+    }
+  );
+
+  if (boardStarted) board.finish();
+
+  const entries: BaselineEntry[] = [];
+  for (const vr of vectorReports) {
+    for (const f of vr.findings) {
+      entries.push({
+        fingerprint: computeFingerprint(vr.name, f),
+        vector: vr.name,
+        file: f.file,
+        line: f.line,
+        title: f.title,
+        severity: f.severity,
+      });
+    }
+  }
+
+  const baselinePath = args.baselinePath ?? BASELINE_PATH;
+  await saveBaseline(entries, baselinePath);
+
+  process.stderr.write(`\nBaselined ${entries.length} finding${entries.length === 1 ? "" : "s"} to ${baselinePath}\n`);
+  process.stderr.write("Future scans will suppress these findings. Use --no-baseline to see all.\n\n");
+
+  return 0;
 }
