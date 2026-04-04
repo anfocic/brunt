@@ -96,4 +96,25 @@ describe("cli", () => {
     assert.ok(!stderr.includes("Unknown format"));
     assert.ok(stderr.includes("Unknown provider: nonexistent"));
   });
+
+  test("accepts baseline as a valid command", () => {
+    const { stderr } = run("baseline", "--provider", "nonexistent");
+    assert.ok(!stderr.includes("Unknown command"));
+  });
+
+  test("accepts --no-baseline flag", () => {
+    const { stderr } = run("scan", "--no-baseline", "--provider", "nonexistent");
+    assert.ok(!stderr.includes("Unknown flag"));
+  });
+
+  test("accepts --baseline-path flag", () => {
+    const { stderr } = run("scan", "--baseline-path", "custom.json", "--provider", "nonexistent");
+    assert.ok(!stderr.includes("Unknown flag"));
+  });
+
+  test("help includes baseline command", () => {
+    const { stdout } = run("help");
+    assert.ok(stdout.includes("baseline"));
+    assert.ok(stdout.includes("--no-baseline"));
+  });
 });

@@ -34,9 +34,12 @@ export function shouldFail(findings: Finding[], failOn: Severity): boolean {
   return findings.some((f) => SEVERITY_ORDER[f.severity] >= threshold);
 }
 
-export function formatText(report: ScanReport, tests: GeneratedTest[], fixes: FixVerification[] = []): string {
+export function formatText(report: ScanReport, tests: GeneratedTest[], fixes: FixVerification[] = [], suppressedCount = 0): string {
   if (report.totalFindings === 0) {
-    return `${bold("brunt")} — no issues found. ${dim(`(${report.totalDuration}ms)`)}\n`;
+    const suffix = suppressedCount > 0
+      ? ` ${dim(`(${suppressedCount} suppressed by baseline)`)}`
+      : "";
+    return `${bold("brunt")} — no issues found.${suffix} ${dim(`(${report.totalDuration}ms)`)}\n`;
   }
 
   const testMap = new Map<string, GeneratedTest>();
@@ -90,7 +93,7 @@ export function formatText(report: ScanReport, tests: GeneratedTest[], fixes: Fi
     }
   }
 
-  out += formatDashboard(report, fixes);
+  out += formatDashboard(report, fixes, suppressedCount);
 
   return out;
 }
@@ -112,7 +115,7 @@ function formatInlineDiff(diff: string): string {
   return out;
 }
 
-function formatDashboard(report: ScanReport, fixes: FixVerification[]): string {
+function formatDashboard(report: ScanReport, fixes: FixVerification[], suppressedCount = 0): string {
   const allFindings = report.vectors.flatMap((v) => v.findings);
   const counts = { critical: 0, high: 0, medium: 0, low: 0 };
   for (const f of allFindings) counts[f.severity]++;
@@ -138,6 +141,10 @@ function formatDashboard(report: ScanReport, fixes: FixVerification[]): string {
     out += `  ${fixParts.join("  ")}\n`;
   }
 
+  if (suppressedCount > 0) {
+    out += `  ${dim(`${suppressedCount} suppressed by baseline`)}\n`;
+  }
+
   out += `${dim("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")}\n`;
 
   return out;
@@ -155,7 +162,7 @@ function sarifLevel(severity: Severity): "error" | "warning" | "note" {
   }
 }
 
-export function formatSarif(report: ScanReport, tests: GeneratedTest[]): string {
+export function formatSarif(report: ScanReport, tests: GeneratedTest[], suppressedCount = 0): string {
   const testMap = new Map<string, GeneratedTest>();
   for (const t of tests) {
     testMap.set(findingKey(t.finding), t);
@@ -199,6 +206,9 @@ export function formatSarif(report: ScanReport, tests: GeneratedTest[]): string 
         ],
       };
     }),
+    ...(suppressedCount > 0
+      ? { properties: { baseline: { suppressedCount } } }
+      : {}),
   }));
 
   return JSON.stringify(
@@ -213,7 +223,7 @@ export function formatSarif(report: ScanReport, tests: GeneratedTest[]): string 
   );
 }
 
-export function formatJson(report: ScanReport, tests: GeneratedTest[], fixes: FixVerification[] = []): string {
+export function formatJson(report: ScanReport, tests: GeneratedTest[], fixes: FixVerification[] = [], suppressedCount = 0): string {
   const testMap = new Map<string, GeneratedTest>();
   for (const t of tests) {
     testMap.set(findingKey(t.finding), t);
@@ -244,6 +254,7 @@ export function formatJson(report: ScanReport, tests: GeneratedTest[], fixes: Fi
     {
       totalFindings: report.totalFindings,
       totalDuration: report.totalDuration,
+      suppressedByBaseline: suppressedCount,
       vectors,
     },
     null,
