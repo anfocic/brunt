@@ -62,7 +62,11 @@ export function parseFindings(raw: string, vectorName: string): Finding[] {
       const obj = f as Record<string, unknown>;
       return (
         typeof obj.file === "string" &&
+        (obj.file as string).length > 0 &&
+        !(obj.file as string).startsWith("/") &&
         typeof obj.line === "number" &&
+        Number.isFinite(obj.line) &&
+        obj.line > 0 &&
         typeof obj.severity === "string" &&
         VALID_SEVERITIES.has(obj.severity) &&
         typeof obj.title === "string" &&

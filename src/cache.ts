@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import type { DiffFile } from "./diff.js";
 import type { VectorReport, Vector } from "./vectors/types.js";
@@ -70,11 +70,10 @@ export async function writeCache(
       timestamp: Date.now(),
       vectorReports,
     };
-    await writeFile(
-      join(CACHE_DIR, `${key}.json`),
-      JSON.stringify(entry),
-      "utf-8"
-    );
+    const target = join(CACHE_DIR, `${key}.json`);
+    const tmp = join(CACHE_DIR, `${key}.${randomBytes(4).toString("hex")}.tmp`);
+    await writeFile(tmp, JSON.stringify(entry), "utf-8");
+    await rename(tmp, target);
   } catch {
     // Cache write failure is non-fatal
   }

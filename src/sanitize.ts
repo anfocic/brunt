@@ -57,9 +57,11 @@ function stripBlockComments(text: string): string {
   let result = "";
   let inSingle = false;
   let inDouble = false;
-  let inTemplate = false;
+  let templateDepth = 0;
   let inBlock = false;
   let escaped = false;
+  // Track ${...} nesting inside template literals
+  const braceStack: number[] = [];
 
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]!;
@@ -85,7 +87,28 @@ function stripBlockComments(text: string): string {
       continue;
     }
 
+    const inTemplate = templateDepth > 0;
     const inString = inSingle || inDouble || inTemplate;
+
+    // Track template expression ${...} boundaries
+    if (inTemplate && ch === "$" && next === "{") {
+      braceStack.push(templateDepth);
+      templateDepth = 0; // inside expression, no longer in template string
+      result += ch;
+      continue;
+    }
+
+    if (braceStack.length > 0 && ch === "{" && !inString) {
+      braceStack.push(0); // nested brace
+      result += ch;
+      continue;
+    }
+
+    if (braceStack.length > 0 && ch === "}" && !inSingle && !inDouble) {
+      templateDepth = braceStack.pop()!;
+      result += ch;
+      continue;
+    }
 
     if (!inString && ch === "/" && next === "*") {
       inBlock = true;
@@ -95,7 +118,10 @@ function stripBlockComments(text: string): string {
 
     if (ch === "'" && !inDouble && !inTemplate) inSingle = !inSingle;
     else if (ch === '"' && !inSingle && !inTemplate) inDouble = !inDouble;
-    else if (ch === "`" && !inSingle && !inDouble) inTemplate = !inTemplate;
+    else if (ch === "`" && !inSingle && !inDouble) {
+      if (inTemplate) templateDepth--;
+      else templateDepth++;
+    }
 
     result += ch;
   }

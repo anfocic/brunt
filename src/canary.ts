@@ -31,8 +31,9 @@ export function injectCanary(files: DiffFile[]): { files: DiffFile[]; canary: Ca
 
   // Pick a real file to blend in with, or create a synthetic one
   const hostFile = files.length > 0 ? files[0]! : null;
+  const ext = hostFile?.path.match(/\.[^.]+$/)?.[0] ?? ".ts";
   const canaryFile = hostFile
-    ? hostFile.path.replace(/\.[^.]+$/, `.canary${hostFile.path.match(/\.[^.]+$/)?.[0] ?? ".ts"}`)
+    ? hostFile.path.replace(/\.[^.]+$/, `.__canary_${id}${ext}`)
     : `src/__canary_${id}.ts`;
 
   const canaryDiff: DiffFile = {

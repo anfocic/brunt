@@ -49,6 +49,7 @@ export function createCustomVectors(configs: CustomVectorConfig[]): Vector[] {
     return {
       name: baseVector.name,
       description: baseVector.description,
+      promptHash: baseVector.promptHash,
       async analyze(files, context, provider, crossRefs) {
         const filtered = filterFiles(files, config.include, config.exclude);
         if (filtered.length === 0) return [];

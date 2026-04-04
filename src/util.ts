@@ -24,6 +24,7 @@ export async function pMap<T, R>(
   fn: (item: T) => Promise<R>,
   concurrency: number
 ): Promise<R[]> {
+  if (items.length === 0) return [];
   const results: R[] = new Array(items.length);
   let index = 0;
 
@@ -34,8 +35,9 @@ export async function pMap<T, R>(
     }
   }
 
+  const effective = Math.max(1, Math.min(concurrency, items.length));
   const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
+    { length: effective },
     () => worker()
   );
   await Promise.all(workers);

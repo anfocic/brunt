@@ -206,12 +206,13 @@ export async function scanEngine(
           const ctx = context.get(file.path);
           if (ctx) batchContext.set(file.path, ctx);
         }
+        let timer: ReturnType<typeof setTimeout>;
         return Promise.race([
           vector.analyze(batch, batchContext, provider, crossRefs),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Vector "${vector.name}" timed out`)), VECTOR_TIMEOUT)
-          ),
-        ]);
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`Vector "${vector.name}" timed out`)), VECTOR_TIMEOUT);
+          }),
+        ]).finally(() => clearTimeout(timer));
       });
       const perBatchResults = await runWithConcurrency(tasks, concurrency);
       const findings = perBatchResults.flatMap((r) =>
