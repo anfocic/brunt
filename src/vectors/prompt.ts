@@ -27,6 +27,4 @@ Each finding must have:
 - "severity": one of "low", "medium", "high", "critical"
 - "title": short description (under 80 chars)
 - "description": detailed explanation of the issue
-- "reproduction": a specific input, scenario, or step-by-step to trigger it
-
-JSON array:`;
+- "reproduction": a specific input, scenario, or step-by-step to trigger it`;

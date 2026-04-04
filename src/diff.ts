@@ -4,6 +4,7 @@ export type DiffHunk = {
   added: string[];
   removed: string[];
   context: string[];
+  newStart?: number; // starting line number in the new file (from @@ header)
 };
 
 export type DiffFile = {
@@ -95,9 +96,11 @@ function parseDiff(raw: string): DiffFile[] {
     if (shouldIgnore(path)) continue;
 
     const hunks: DiffHunk[] = [];
+    const hunkHeaders = [...chunk.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/gm)];
     const hunkParts = chunk.split(/^@@[^@]+@@.*$/m).slice(1);
 
-    for (const hunkRaw of hunkParts) {
+    for (let h = 0; h < hunkParts.length; h++) {
+      const hunkRaw = hunkParts[h]!;
       const added: string[] = [];
       const removed: string[] = [];
       const context: string[] = [];
@@ -109,7 +112,8 @@ function parseDiff(raw: string): DiffFile[] {
       }
 
       if (added.length > 0 || removed.length > 0) {
-        hunks.push({ added, removed, context });
+        const newStart = hunkHeaders[h] ? parseInt(hunkHeaders[h][1]!, 10) : undefined;
+        hunks.push({ added, removed, context, newStart });
       }
     }
 

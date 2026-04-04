@@ -9,42 +9,46 @@ export function createVector(
   description: string,
   promptBody: string
 ): Vector {
+  const systemPrompt = `${promptBody}\n\n${RESPONSE_FORMAT}`;
+
   return {
     name,
     description,
     async analyze(files, context, provider) {
       if (files.length === 0) return [];
 
-      const prompt = `${promptBody}
-
-DIFF (lines starting with + are added, - are removed):
+      const userPrompt = `DIFF (lines starting with + are added, - are removed):
 ${buildDiffSection(files)}
 
 FULL FILE CONTEXT:
 ${buildContextSection(context)}
 
-${RESPONSE_FORMAT}`;
+JSON array:`;
 
       if (provider.queryStream && isTTY()) {
-        return analyzeWithStream(prompt, provider, name);
+        return analyzeWithStream(systemPrompt, userPrompt, provider, name);
       }
 
-      const response = await provider.query(prompt);
-      return parseFindings(response, name);
+      const response = await provider.queryRich(systemPrompt, userPrompt);
+      return parseFindings(response.text, name);
     },
   };
 }
 
 async function analyzeWithStream(
-  prompt: string,
+  system: string,
+  userPrompt: string,
   provider: { queryStream?(p: string): AsyncIterable<string> },
   vectorName: string
 ) {
+  // Streaming uses single prompt — it's just for TTY preview, not the primary path.
+  // The system prompt benefit (Anthropic caching) applies to queryRich calls above.
+  const combined = `${system}\n\n${userPrompt}`;
   let response = "";
   let chars = 0;
   const maxPreview = 120;
 
-  for await (const chunk of provider.queryStream!(prompt)) {
+  for await (const chunk of provider.queryStream!(combined)) {
     response += chunk;
     chars += chunk.length;
 

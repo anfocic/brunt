@@ -8,6 +8,8 @@ import { detectInjection } from "./injection.js";
 import { detectSuspiciousSilence } from "./silence.js";
 
 const API_CONCURRENCY = 5;
+const BATCH_TOKEN_BUDGET = 4000; // max estimated tokens per batch
+const SOLO_FILE_THRESHOLD = 2000; // files above this go alone
 
 async function runWithConcurrency<T>(
   tasks: (() => Promise<T>)[],
@@ -30,6 +32,57 @@ async function runWithConcurrency<T>(
   const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker());
   await Promise.all(workers);
   return results;
+}
+
+function estimateFileTokens(file: DiffFile, context: Map<string, string>): number {
+  let chars = 0;
+  for (const hunk of file.hunks) {
+    for (const line of hunk.added) chars += line.length;
+    for (const line of hunk.removed) chars += line.length;
+  }
+  const ctx = context.get(file.path);
+  if (ctx) chars += ctx.length;
+  return Math.ceil(chars / 4);
+}
+
+export function batchFiles(
+  files: DiffFile[],
+  context: Map<string, string>
+): DiffFile[][] {
+  const batches: DiffFile[][] = [];
+  let currentBatch: DiffFile[] = [];
+  let currentTokens = 0;
+
+  for (const file of files) {
+    const tokens = estimateFileTokens(file, context);
+
+    // Large files go solo
+    if (tokens > SOLO_FILE_THRESHOLD) {
+      if (currentBatch.length > 0) {
+        batches.push(currentBatch);
+        currentBatch = [];
+        currentTokens = 0;
+      }
+      batches.push([file]);
+      continue;
+    }
+
+    // Would this file overflow the current batch?
+    if (currentTokens + tokens > BATCH_TOKEN_BUDGET && currentBatch.length > 0) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentTokens = 0;
+    }
+
+    currentBatch.push(file);
+    currentTokens += tokens;
+  }
+
+  if (currentBatch.length > 0) {
+    batches.push(currentBatch);
+  }
+
+  return batches;
 }
 
 type ScanInput = {
@@ -86,18 +139,22 @@ export async function scanEngine(
 
   onProgress?.({ type: "vectors-start", total: vectors.length });
 
+  const batches = batchFiles(filesWithCanary, context);
+
   const settled = await Promise.allSettled(
     vectors.map(async (vector) => {
       const start = performance.now();
-      const concurrency = provider.name === "claude-cli" ? filesWithCanary.length : API_CONCURRENCY;
-      const tasks = filesWithCanary.map((file) => () => {
-        const fileContext = new Map<string, string>();
-        const ctx = context.get(file.path);
-        if (ctx) fileContext.set(file.path, ctx);
-        return vector.analyze([file], fileContext, provider);
+      const concurrency = provider.name === "claude-cli" ? batches.length : API_CONCURRENCY;
+      const tasks = batches.map((batch) => () => {
+        const batchContext = new Map<string, string>();
+        for (const file of batch) {
+          const ctx = context.get(file.path);
+          if (ctx) batchContext.set(file.path, ctx);
+        }
+        return vector.analyze(batch, batchContext, provider);
       });
-      const perFileResults = await runWithConcurrency(tasks, concurrency);
-      const findings = perFileResults.flatMap((r) =>
+      const perBatchResults = await runWithConcurrency(tasks, concurrency);
+      const findings = perBatchResults.flatMap((r) =>
         r.status === "fulfilled" ? r.value : []
       );
       const duration = Math.round(performance.now() - start);
