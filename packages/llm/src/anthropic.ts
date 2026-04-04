@@ -59,7 +59,6 @@ export class AnthropicProvider implements Provider {
         });
 
         if (response.status === 429 || response.status === 529) {
-          clearTimeout(timer);
           if (attempt === MAX_RETRIES) {
             const text = await response.text();
             throw new Error(`Anthropic API error (${response.status}) after ${MAX_RETRIES} retries: ${text}`);
@@ -92,7 +91,6 @@ export class AnthropicProvider implements Provider {
           },
         };
       } catch (err: unknown) {
-        clearTimeout(timer);
         if (err instanceof Error && err.name === "AbortError") {
           throw new Error(`Anthropic API timed out after ${this.timeout / 1000}s`);
         }
@@ -102,7 +100,9 @@ export class AnthropicProvider implements Provider {
       }
     }
 
-    throw new Error("Unreachable: retry loop exhausted without throwing");
+    // All retries exhausted via rate limiting — the loop throws on last attempt,
+    // but TypeScript requires a return/throw here for type safety.
+    throw new Error(`Anthropic API failed after ${MAX_RETRIES} retries`);
   }
 
   async *queryStream(prompt: string): AsyncIterable<string> {
