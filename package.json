@@ -1,6 +1,6 @@
 {
   "name": "@fole/brunt",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Adversarial AI code review. Finds bugs, generates failing tests as proof.",
   "license": "MIT",
   "type": "module",

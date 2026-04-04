@@ -34,13 +34,18 @@
 - [x] --no-cache flag to force fresh analysis
 - [x] 140 tests
 
+## v0.6 (done)
+- [x] Base-branch verification (test against base branch to filter false positives)
+- [x] Fix minimality guard (reject disproportionately large fixes)
+- [x] Mutation check (revert fix, confirm test fails again)
+- [x] Monorepo support (`--scope` flag + auto-detection)
+- [x] Custom vector plugins (define in brunt.config.yaml)
+
 ## v1.0
 - [ ] Compiled binaries (GitHub Releases, zero runtime dependency)
 - [ ] Vector marketplace / community registry
 - [ ] VS Code extension (inline findings as diagnostics)
-- [ ] Monorepo support (scan only changed packages)
-- [ ] Baseline / ignore file (suppress known findings)
 - [ ] Metrics dashboard (findings over time)
-- [ ] Custom vector plugins (load from brunt.config.yaml)
 - [ ] Daemon/watch mode (`brunt watch`)
+- [ ] Confidence scoring (numeric score based on gates passed)
 - [ ] Vector-specific context hints (e.g., "this is a billing system")

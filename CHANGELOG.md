@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-04-04
+
+### Added
+- **Base-branch verification**: after a proof test confirms a bug, brunt runs the test against the base branch. If it fails there too, the finding is pre-existing or a false positive and gets dropped. Includes `.brunt-restore` crash recovery manifest for interrupted file swaps.
+- **Fix minimality guard**: rejects generated fixes that change more than `max(10, 50% of source lines)`. Oversized fixes are retried with feedback within the existing attempt loop.
+- **Mutation check**: after a fix passes the test, brunt reverts to the original buggy code and reruns the test. If the test still passes, it isn't testing the right thing — the fix is rejected and retried.
+- **Monorepo support**: `--scope <path>` filters scanned files to a specific package (e.g. `--scope packages/auth`). Auto-detects when all changed files share a common monorepo package prefix (`packages/`, `apps/`, `services/`, `libs/`, `modules/`). Use `--scope .` to scan everything.
+- **Custom vector plugins**: define custom analysis vectors in `brunt.config.yaml` with a name, description, and prompt. Vectors are loaded through the existing `createVector()` factory and merged with built-in vectors. Use `--config <path>` for explicit config location. See `brunt.config.example.yaml` for examples.
+
+### Changed
+- Proof loop now has 5 deterministic gates (was 2): test-fail, base-branch, minimality, test-pass-after-fix, mutation-revert
+- `yaml` added as the only runtime dependency (for config parsing)
+
 ## [0.5.0] - 2026-04-04
 
 ### Added

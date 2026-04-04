@@ -72,6 +72,37 @@ brunt -- found 2 issues (14230ms)
 brunt scan --vectors security   # run only security
 ```
 
+### Custom Vectors
+
+Define domain-specific vectors in `brunt.config.yaml`:
+
+```yaml
+vectors:
+  - name: billing
+    description: "Checks billing and payment logic"
+    prompt: |
+      Focus on: rounding errors, double-charges, currency handling,
+      subscription state machine bugs, race conditions in payments.
+```
+
+Then run them like built-in vectors:
+
+```bash
+brunt scan --vectors billing,security
+```
+
+See `brunt.config.example.yaml` for more examples.
+
+## Monorepo Support
+
+Brunt auto-detects monorepo layouts. If all changed files are under a single package (`packages/`, `apps/`, `services/`, `libs/`, `modules/`), only that package is scanned.
+
+```bash
+brunt scan                           # auto-detects scope
+brunt scan --scope packages/auth     # explicit scope
+brunt scan --scope .                 # scan everything (opt out)
+```
+
 ## Providers
 
 | Provider | Cost | Setup |
@@ -145,6 +176,8 @@ brunt scan --format sarif > results.sarif   # SARIF (GitHub Code Scanning)
 --format <type>       Output: text, json, sarif
 --fail-on <severity>  Exit 1 threshold: low, medium, high, critical (default: medium)
 --vectors <list>      Comma-separated vectors to run
+--scope <path>        Only scan files under this path (auto-detects in monorepos)
+--config <path>       Path to brunt.config.yaml (default: auto-detect)
 --no-tests            Skip proof test generation
 --no-cache            Force fresh LLM analysis
 --verify              Run proof tests, drop unverified findings
