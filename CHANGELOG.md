@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-04
+
+### Added
+- **Baseline suppression**: `brunt baseline` saves current findings to `.brunt-baseline.json`. Future scans automatically filter them out. Use `--no-baseline` to see all findings, `--baseline-path` for a custom location. Suppressed count shown in text, JSON, and SARIF output.
+- **OpenAI-compatible providers**: `--provider openai` now works with any server that speaks the OpenAI chat completions protocol. Set `OPENAI_BASE_URL` to point at LM Studio, llama.cpp, vLLM, LocalAI, Together, Groq, or any other compatible server. API key is optional for local servers.
+
+### Fixed
+- **Anthropic**: removed unreachable code after retry loop, fixed double `clearTimeout` in `queryRich`
+- **OpenAI**: added retry with exponential backoff on 429 rate limits (was failing immediately), aligned default timeout from 60s to 300s
+- **Ollama**: switched from `/api/generate` to `/api/chat` with proper system/user message roles (was naively concatenating system prompt with `\n\n`)
+- **Claude CLI**: `queryStream` now detects missing `claude` binary (ENOENT) instead of silently returning empty, and throws timeout error when process is killed
+- **Cost tracking**: added explicit Sonnet pricing entry (was falling through to default)
+- **CLI**: added `openai` to valid providers list (was rejected despite backend support)
+
+### Changed
+- **Token optimization — system/user split**: vector instructions and response format now sent as system message via `queryRich()`, enabling Anthropic prompt caching. After the first file per vector, remaining files hit the cache.
+- **Token optimization — context windowing**: large files (>200 lines) now send only ±50 lines around each changed hunk plus the first 10 lines (imports/types), instead of the full file (up to 50KB). Skipped regions shown as `... (N lines omitted) ...`.
+- **Token optimization — file batching**: small files are grouped into batches (~4000 token budget each) to reduce API call count. A 10-file diff typically goes from 10 calls to 3-4 per vector.
+- **Diff parser**: now extracts hunk start line numbers from `@@` headers (previously discarded) to support context windowing.
+- Test count: 223 → 230
+
 ## [0.4.0] - 2026-03-28
 
 ### Added
@@ -14,7 +35,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Streaming**: `queryStream()` on all 3 providers for real-time LLM output during analysis
 - **Multi-model consensus**: `--consensus` runs the same scan across multiple providers and shows agreement
 - **PR creation**: `--fix --pr` creates a branch, commits verified fixes, and opens a PR via `gh`
-- **Baseline management**: `brunt baseline init|update|show|clear` to suppress known/accepted findings
 - **Rich TUI**: spinner, multi-line progress board, ASCII banner, severity-colored output
 - **CI dogfood job**: brunt scans itself on every PR
 

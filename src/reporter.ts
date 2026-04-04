@@ -12,7 +12,7 @@ const SEVERITY_COLORS: Record<Severity, (s: string) => string> = {
 };
 import { findingKey } from "./util.js";
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";
 
 function findingId(vectorName: string, f: Finding): string {
   const hash = createHash("sha256")
