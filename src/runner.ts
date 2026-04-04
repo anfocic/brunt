@@ -17,6 +17,7 @@ import { loadBaseline, saveBaseline, filterBaselined, computeFingerprint, BASELI
 import { groupByPackage, filterByScope, type PackageGroup } from "./monorepo.js";
 import { loadConfig } from "./config.js";
 import { createCustomVectors } from "./vectors/custom.js";
+import { INCREMENTAL_PATH } from "./incremental.js";
 
 const BUILTIN_VECTORS: Vector[] = [correctness, security];
 
@@ -98,6 +99,11 @@ export async function run(args: Args): Promise<number> {
     const board = new ProgressBoard(vectors.map((v) => v.name));
     let boardStarted = false;
 
+    // Scope incremental state file per-package to avoid collisions
+    const incrementalPath = multiPackage && args.incremental
+      ? (args.incrementalPath ?? INCREMENTAL_PATH).replace(/\.json$/, `-${group.name.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`)
+      : args.incrementalPath;
+
     const { vectorReports: groupReports, fromCache } = await scanEngine(
       {
         files: group.files,
@@ -108,7 +114,7 @@ export async function run(args: Args): Promise<number> {
         model: args.model,
         packageRoot: multiPackage ? group.root : undefined,
         incremental: args.incremental,
-        incrementalPath: args.incrementalPath,
+        incrementalPath,
       },
       (event: ProgressEvent) => {
         switch (event.type) {

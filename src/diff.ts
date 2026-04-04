@@ -1,4 +1,4 @@
-import { exec } from "./util.js";
+import { exec, matchGlob } from "./util.js";
 
 export type DiffHunk = {
   added: string[];
@@ -66,17 +66,6 @@ const SENSITIVE_PATTERNS = [
   "id_rsa*",
   "*.keystore",
 ];
-
-function matchGlob(pattern: string, filename: string): boolean {
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*/g, ".*");
-  try {
-    return new RegExp("^" + escaped + "$", "i").test(filename);
-  } catch {
-    return false;
-  }
-}
 
 export function isSensitive(path: string, extraPatterns?: string[]): boolean {
   const filename = path.split("/").pop() ?? "";

@@ -94,34 +94,20 @@ describe("monorepo", () => {
   });
 
   describe("resolvePackageName", () => {
-    test("reads name from package.json", async () => {
-      const name = await resolvePackageName(
-        join(dir, "packages", "api", "package.json"),
-        "packages/api"
-      );
+    test("reads name from package.json", () => {
+      const content = JSON.stringify({ name: "@myapp/api" });
+      const name = resolvePackageName("package.json", content, "packages/api");
       assert.strictEqual(name, "@myapp/api");
     });
 
-    test("falls back to directory name for missing name field", async () => {
-      writeFileSync(
-        join(dir, "packages", "api", "package.json"),
-        JSON.stringify({ version: "1.0.0" })
-      );
-      clearRootCache();
-      const name = await resolvePackageName(
-        join(dir, "packages", "api", "package.json"),
-        "packages/api"
-      );
+    test("falls back to directory name for missing name field", () => {
+      const content = JSON.stringify({ version: "1.0.0" });
+      const name = resolvePackageName("package.json", content, "packages/api");
       assert.strictEqual(name, "api");
     });
 
-    test("falls back to directory name for invalid JSON", async () => {
-      writeFileSync(join(dir, "packages", "api", "package.json"), "not json");
-      clearRootCache();
-      const name = await resolvePackageName(
-        join(dir, "packages", "api", "package.json"),
-        "packages/api"
-      );
+    test("falls back to directory name for invalid JSON", () => {
+      const name = resolvePackageName("package.json", "not json", "packages/api");
       assert.strictEqual(name, "api");
     });
   });

@@ -132,8 +132,9 @@ export async function scanEngine(
   onProgress?: ProgressCallback
 ): Promise<ScanResult> {
   const { files, vectors, provider, noCache, providerName, model, packageRoot, incremental, incrementalPath } = input;
+  const resolvedProvider = providerName ?? provider.name;
 
-  const cacheKey = computeCacheKey(files, vectors, providerName ?? provider.name, model);
+  const cacheKey = computeCacheKey(files, vectors, resolvedProvider, model);
 
   if (!noCache) {
     const cached = await readCache(cacheKey);
@@ -150,7 +151,7 @@ export async function scanEngine(
 
   if (incremental) {
     const state = await loadIncrementalState(incrementalPath);
-    if (state && isStateCompatible(state, providerName ?? provider.name, model, vectors.map((v) => v.name))) {
+    if (state && isStateCompatible(state, resolvedProvider, model, vectors.map((v) => v.name))) {
       const partition = partitionFiles(files, state);
       if (partition.unchanged.length > 0) {
         onProgress?.({ type: "incremental-hit", unchanged: partition.unchanged.length, rescanning: partition.changed.length });
@@ -169,7 +170,7 @@ export async function scanEngine(
     const merged = mergeFindings(emptyReports, carriedFindings, files);
 
     if (incremental) {
-      const state = buildState(providerName ?? provider.name, model, vectors.map((v) => v.name), files, merged);
+      const state = buildState(resolvedProvider, model, vectors.map((v) => v.name), files, merged);
       await saveIncrementalState(state, incrementalPath);
     }
 
@@ -264,7 +265,7 @@ export async function scanEngine(
 
   // Save incremental state
   if (incremental) {
-    const state = buildState(providerName ?? provider.name, model, vectors.map((v) => v.name), files, finalReports);
+    const state = buildState(resolvedProvider, model, vectors.map((v) => v.name), files, finalReports);
     await saveIncrementalState(state, incrementalPath);
   }
 

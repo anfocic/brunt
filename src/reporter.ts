@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Finding, Severity, ScanReport } from "./vectors/types.js";
+import { SEVERITY_ORDER, type Finding, type Severity, type ScanReport } from "./vectors/types.js";
 import type { GeneratedTest } from "./proof/test-gen.js";
 import type { FixVerification } from "./fix/fix-gen.js";
 import { bold, dim, green, red, yellow, cyan, gray } from "@packages/devkit";
@@ -21,13 +21,6 @@ function findingId(vectorName: string, f: Finding): string {
     .slice(0, 12);
   return `brunt/${vectorName}/${hash}`;
 }
-
-const SEVERITY_ORDER: Record<Severity, number> = {
-  critical: 4,
-  high: 3,
-  medium: 2,
-  low: 1,
-};
 
 export function shouldFail(findings: Finding[], failOn: Severity): boolean {
   const threshold = SEVERITY_ORDER[failOn];

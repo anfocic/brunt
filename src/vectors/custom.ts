@@ -1,27 +1,8 @@
 import type { CustomVectorConfig } from "../config.js";
 import type { Vector, DiffFile, Finding, Severity } from "./types.js";
+import { SEVERITY_ORDER } from "./types.js";
 import { createVector } from "./factory.js";
-
-const SEVERITY_ORDER: Record<Severity, number> = {
-  low: 1,
-  medium: 2,
-  high: 3,
-  critical: 4,
-};
-
-function matchGlob(pattern: string, filePath: string): boolean {
-  // Support *.ext and **/*.ext patterns
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*/g, "__GLOBSTAR__")
-    .replace(/\*/g, "[^/]*")
-    .replace(/__GLOBSTAR__/g, ".*");
-  try {
-    return new RegExp(`^${escaped}$`).test(filePath);
-  } catch {
-    return false;
-  }
-}
+import { matchGlob } from "../util.js";
 
 function filterFiles(
   files: DiffFile[],

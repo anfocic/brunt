@@ -44,6 +44,19 @@ export function findingKey(f: Finding): string {
   return `${f.file}\0${f.line}\0${f.title}`;
 }
 
+export function matchGlob(pattern: string, target: string): boolean {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*/g, "__GLOBSTAR__")
+    .replace(/\*/g, "[^/]*")
+    .replace(/__GLOBSTAR__/g, ".*");
+  try {
+    return new RegExp(`^${escaped}$`, "i").test(target);
+  } catch {
+    return false;
+  }
+}
+
 const CODE_STARTERS = [
   "import ", "const ", "let ", "var ", "function ", "class ", "export ",
   "describe(", "test(", "it(", "from ", "use ", "#", "pub ", "def ",

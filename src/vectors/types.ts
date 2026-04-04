@@ -5,6 +5,13 @@ import type { CrossRefMatch } from "../crossref.js";
 
 export type Severity = "low" | "medium" | "high" | "critical";
 
+export const SEVERITY_ORDER: Record<Severity, number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+};
+
 export type Finding = {
   file: string;
   line: number;

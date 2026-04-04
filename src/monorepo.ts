@@ -25,19 +25,17 @@ const MANIFEST_FILES = [
 // Cache directory -> detected root to avoid redundant filesystem calls
 const rootCache = new Map<string, { root: string; manifest: string; name: string } | null>();
 
-async function fileExists(path: string): Promise<boolean> {
+async function tryReadFile(path: string): Promise<string | null> {
   try {
-    await stat(path);
-    return true;
+    return await readFile(path, "utf-8");
   } catch {
-    return false;
+    return null;
   }
 }
 
-async function isMonorepoRoot(manifestPath: string): Promise<boolean> {
+function isMonorepoRoot(manifestPath: string, content: string): boolean {
   if (!manifestPath.endsWith("package.json")) return false;
   try {
-    const content = await readFile(manifestPath, "utf-8");
     const parsed = JSON.parse(content);
     return !!(parsed.workspaces);
   } catch {
@@ -45,10 +43,8 @@ async function isMonorepoRoot(manifestPath: string): Promise<boolean> {
   }
 }
 
-export async function resolvePackageName(manifestPath: string, fallbackDir: string): Promise<string> {
+export function resolvePackageName(manifestPath: string, content: string, fallbackDir: string): string {
   try {
-    const content = await readFile(manifestPath, "utf-8");
-
     if (manifestPath.endsWith("package.json")) {
       const parsed = JSON.parse(content);
       if (parsed.name) return parsed.name;
@@ -73,10 +69,14 @@ async function findGitRoot(): Promise<string> {
   // Walk up from cwd looking for .git
   let dir = process.cwd();
   while (true) {
-    if (await fileExists(join(dir, ".git"))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) return process.cwd(); // reached filesystem root
-    dir = parent;
+    try {
+      await stat(join(dir, ".git"));
+      return dir;
+    } catch {
+      const parent = dirname(dir);
+      if (parent === dir) return process.cwd();
+      dir = parent;
+    }
   }
 }
 
@@ -96,16 +96,16 @@ export async function detectPackageRoot(
 
     for (const manifest of MANIFEST_FILES) {
       const manifestPath = join(dir, manifest);
-      if (await fileExists(manifestPath)) {
+      const content = await tryReadFile(manifestPath);
+      if (content !== null) {
         // Skip monorepo root package.json (has "workspaces" field)
-        if (await isMonorepoRoot(manifestPath)) {
-          // This is the repo root, not a package — stop walking
+        if (isMonorepoRoot(manifestPath, content)) {
           rootCache.set(dir, null);
           return null;
         }
 
         const relRoot = relative(absGitRoot, dir) || ".";
-        const name = await resolvePackageName(manifestPath, relRoot);
+        const name = resolvePackageName(manifestPath, content, relRoot);
         const result = { root: relRoot, manifest, name };
         rootCache.set(dir, result);
         return result;
@@ -127,6 +127,7 @@ export function clearRootCache(): void {
 }
 
 export async function groupByPackage(files: DiffFile[]): Promise<PackageGroup[]> {
+  rootCache.clear();
   const gitRoot = await findGitRoot();
   const groups = new Map<string, PackageGroup>();
   const rootGroup: PackageGroup = { name: "<root>", root: ".", manifest: "", files: [] };
