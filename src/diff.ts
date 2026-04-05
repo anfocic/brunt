@@ -170,3 +170,45 @@ export async function getDiff(range: string): Promise<DiffFile[]> {
   });
 }
 
+/**
+ * Get all tracked files in the repo as DiffFile[], treating every line as "added".
+ * Used by `brunt audit` for full-repo scans.
+ */
+export async function getFullRepo(scope?: string): Promise<DiffFile[]> {
+  const { stdout, exitCode } = await exec("git", ["ls-files"], { maxBuffer: 10 * 1024 * 1024 });
+  if (exitCode !== 0) {
+    throw new Error("git ls-files failed");
+  }
+
+  const paths = stdout.trim().split("\n").filter(Boolean);
+  const files: DiffFile[] = [];
+
+  for (const path of paths) {
+    if (shouldIgnore(path)) continue;
+    if (isSensitive(path)) continue;
+    if (scope && scope !== "." && !path.startsWith(scope.replace(/\/+$/, "") + "/")) continue;
+
+    const language = inferLanguage(path);
+    if (!language) continue;
+
+    const { stdout: content, exitCode: readExit } = await exec("git", ["show", `HEAD:${path}`]);
+    if (readExit !== 0 || !content.trim()) continue;
+
+    const lines = content.split("\n").filter((l) => l.length > 0);
+    if (lines.length === 0) continue;
+
+    files.push({
+      path,
+      language,
+      hunks: [{
+        added: lines,
+        removed: [],
+        context: [],
+        newStart: 1,
+      }],
+    });
+  }
+
+  return files;
+}
+

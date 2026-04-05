@@ -1,5 +1,5 @@
 import type { Args } from "./cli.js";
-import { getDiff } from "./diff.js";
+import { getDiff, getFullRepo } from "./diff.js";
 import { correctness } from "./vectors/correctness.js";
 import { security } from "./vectors/security.js";
 import type { Vector, VectorReport, ScanReport } from "./vectors/types.js";
@@ -386,4 +386,88 @@ export async function runBaseline(args: Args): Promise<number> {
   process.stderr.write("Future scans will suppress these findings. Use --no-baseline to see all.\n\n");
 
   return 0;
+}
+
+export async function runAudit(args: Args): Promise<number> {
+  printBanner();
+  await checkGitRepo();
+  await checkProvider(args.provider, args.model);
+
+  const provider = getProvider(args.provider, {
+    maxTokens: args.maxTokens,
+    model: args.model,
+  });
+  const allVectors = await loadAllVectors(args.configPath);
+  const vectors = getVectors(allVectors, args.vectors);
+  const scanStart = performance.now();
+
+  const spinner = new Spinner("Collecting files...");
+  spinner.start();
+
+  const files = await getFullRepo(args.scope);
+
+  if (files.length === 0) {
+    spinner.succeed("No files to audit.");
+    return 0;
+  }
+
+  spinner.succeed(`Auditing ${files.length} file${files.length === 1 ? "" : "s"}.`);
+
+  const board = new ProgressBoard(vectors.map((v) => v.name));
+  let boardStarted = false;
+
+  const { vectorReports } = await scanEngine(
+    {
+      files,
+      vectors,
+      provider,
+      noCache: true, // full repo scans shouldn't use diff-based cache
+      providerName: args.provider,
+      model: args.model,
+    },
+    (event: ProgressEvent) => {
+      switch (event.type) {
+        case "vectors-start":
+          process.stderr.write(`\n  Running ${event.total} vector${event.total === 1 ? "" : "s"} via ${provider.name}:\n\n`);
+          for (const v of vectors) board.update(v.name, "running");
+          boardStarted = true;
+          break;
+        case "vector-done":
+          board.update(event.name, "done", `${event.count} finding${event.count === 1 ? "" : "s"}`, event.duration);
+          break;
+        case "vector-failed":
+          board.update(event.name, "failed", event.message);
+          break;
+        case "injection-detected":
+          console.error(`WARNING: Possible prompt injection in ${event.file}`);
+          break;
+        case "suspicious-silence":
+          console.error(`WARNING: ${event.file} touches security-sensitive code but produced zero findings. Review manually.`);
+          break;
+      }
+    }
+  );
+
+  if (boardStarted) board.finish();
+
+  const report: ScanReport = {
+    vectors: vectorReports,
+    totalFindings: vectorReports.reduce((sum, v) => sum + v.findings.length, 0),
+    totalDuration: Math.round(performance.now() - scanStart),
+  };
+
+  const allFindings = vectorReports.flatMap((v) => v.findings);
+
+  process.stderr.write("\n");
+
+  const output =
+    args.format === "json"
+      ? formatJson(report, [], [], 0)
+      : args.format === "sarif"
+        ? formatSarif(report, [], 0)
+        : formatText(report, [], [], 0);
+
+  process.stdout.write(output + "\n");
+
+  return shouldFail(allFindings, args.failOn) ? 1 : 0;
 }

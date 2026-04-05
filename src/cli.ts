@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { run, runBaseline } from "./runner.js";
+import { run, runBaseline, runAudit } from "./runner.js";
 
 export type Args = {
-  command: "scan" | "baseline";
+  command: "scan" | "baseline" | "audit";
   diff: string;
   provider: string;
   format: "text" | "json" | "sarif";
@@ -44,11 +44,11 @@ export function parseArgs(argv: string[]): Args {
     process.exit(0);
   }
 
-  if (command !== "scan" && command !== "baseline" && !command.startsWith("--")) {
+  if (command !== "scan" && command !== "baseline" && command !== "audit" && !command.startsWith("--")) {
     throw new Error(`Unknown command: ${command}. Run "brunt help" for usage.`);
   }
 
-  const startIdx = command === "scan" || command === "baseline" ? 1 : 0;
+  const startIdx = command === "scan" || command === "baseline" || command === "audit" ? 1 : 0;
 
   let diff: string | undefined;
   let provider: string | undefined;
@@ -146,7 +146,7 @@ export function parseArgs(argv: string[]): Args {
   }
 
   return {
-    command: (command === "baseline" ? "baseline" : "scan") as Args["command"],
+    command: (command === "baseline" ? "baseline" : command === "audit" ? "audit" : "scan") as Args["command"],
     diff: diff ?? detectDefaultDiff(),
     provider: provider ?? "claude-cli",
     format: format ?? "text",
@@ -175,11 +175,13 @@ brunt - adversarial AI code review
 
 USAGE
   brunt scan [options]
+  brunt audit [options]
   brunt baseline [options]
   brunt help
 
 COMMANDS
   scan       Analyze a diff for bugs and vulnerabilities (default)
+  audit      Scan all tracked files in the repo (full codebase review)
   baseline   Run scan and save findings as suppression baseline
   help       Show this help
 
@@ -210,7 +212,9 @@ async function main() {
     const args = parseArgs(process.argv);
     const exitCode = args.command === "baseline"
       ? await runBaseline(args)
-      : await run(args);
+      : args.command === "audit"
+        ? await runAudit(args)
+        : await run(args);
     process.exit(exitCode);
   } catch (err) {
     console.error(`brunt error: ${err instanceof Error ? err.message : err}`);
