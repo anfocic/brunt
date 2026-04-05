@@ -40,6 +40,7 @@
 - [x] Mutation check (revert fix, confirm test fails again)
 - [x] Monorepo support (`--scope` flag + auto-detection)
 - [x] Custom vector plugins (define in brunt.config.yaml)
+- [x] Full repo audit (`brunt audit` scans all tracked files)
 
 ## v1.0
 - [ ] Compiled binaries (GitHub Releases, zero runtime dependency)

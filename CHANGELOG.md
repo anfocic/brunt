@@ -13,6 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Mutation check**: after a fix passes the test, brunt reverts to the original buggy code and reruns the test. If the test still passes, it isn't testing the right thing — the fix is rejected and retried.
 - **Monorepo support**: `--scope <path>` filters scanned files to a specific package (e.g. `--scope packages/auth`). Auto-detects when all changed files share a common monorepo package prefix (`packages/`, `apps/`, `services/`, `libs/`, `modules/`). Use `--scope .` to scan everything.
 - **Custom vector plugins**: define custom analysis vectors in `brunt.config.yaml` with a name, description, and prompt. Vectors are loaded through the existing `createVector()` factory and merged with built-in vectors. Use `--config <path>` for explicit config location. See `brunt.config.example.yaml` for examples.
+- **Full repo audit**: `brunt audit` scans all tracked files in the repo, not just diffs. Supports `--scope` for monorepo filtering. Useful for first-time setup, periodic security reviews, or checking AI-generated codebases.
 
 ### Changed
 - Proof loop now has 5 deterministic gates (was 2): test-fail, base-branch, minimality, test-pass-after-fix, mutation-revert

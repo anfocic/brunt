@@ -22,6 +22,9 @@ brunt scan --fix
 
 # Full pipeline: find, prove, fix, open PR
 brunt scan --fix --pr
+
+# Audit entire repo (not just diffs)
+brunt audit
 ```
 
 ## What It Does
