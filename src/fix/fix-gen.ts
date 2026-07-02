@@ -6,6 +6,7 @@ import type { Provider } from "@packages/llm";
 import type { GeneratedTest } from "../proof/test-gen.js";
 import { pMap, cleanLlmResponse, findingKey } from "../util.js";
 import { generateDiff } from "../diff-gen.js";
+import { RestoreGuard } from "../restore.js";
 
 export type FixVerification = {
   finding: Finding;
@@ -129,7 +130,8 @@ export async function fixAndVerify(
   finding: Finding,
   test: GeneratedTest,
   provider: Provider,
-  maxRetries = 2
+  maxRetries = 2,
+  guard?: RestoreGuard
 ): Promise<FixVerification> {
   try {
     validateFilePath(finding.file);
@@ -158,77 +160,94 @@ export async function fixAndVerify(
     };
   }
 
-  let previousFailure: string | undefined;
+  // Applying/reverting fixes rewrites the source file in place. Record the
+  // original so an interrupt or crash mid-fix restores it. The first
+  // registration wins, so the mutation check's temporary revert never
+  // overwrites the true original in the manifest.
+  const ownGuard = guard === undefined;
+  const restore = guard ?? new RestoreGuard();
+  if (ownGuard) restore.installSignalHandler();
+  await restore.register(finding.file, sourceCode);
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const prompt = buildFixPrompt(finding, sourceCode, test.content, previousFailure);
-    const raw = await provider.query(prompt);
-    const patchedContent = cleanLlmResponse(raw);
+  try {
+    let previousFailure: string | undefined;
 
-    if (!patchedContent || patchedContent.trim() === sourceCode.trim()) {
-      previousFailure = "Generated fix was empty or identical to the original.";
-      continue;
-    }
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const prompt = buildFixPrompt(finding, sourceCode, test.content, previousFailure);
+      const raw = await provider.query(prompt);
+      const patchedContent = cleanLlmResponse(raw);
 
-    // Fix minimality guard: reject disproportionately large fixes
-    const fixDiff = generateDiff(sourceCode, patchedContent, finding.file);
-    const fixChangedLines = fixDiff.split("\n").filter(
-      (l) => (l.startsWith("+") || l.startsWith("-")) && !l.startsWith("+++") && !l.startsWith("---")
-    ).length;
-    const sourceLineCount = sourceCode.split("\n").length;
-    const maxChangedLines = Math.max(10, Math.round(sourceLineCount * 0.5));
-
-    if (fixChangedLines > maxChangedLines) {
-      previousFailure = `Fix too large: ${fixChangedLines} changed lines (max ${maxChangedLines}). A targeted fix should change fewer lines.`;
-      continue;
-    }
-
-    const originalContent = await applyFix(finding.file, patchedContent);
-
-    try {
-      const result = await verifyFix(test.filePath);
-
-      if (result.passed) {
-        // Mutation check: revert to buggy code and confirm test fails
-        await rollbackFix(finding.file, originalContent);
-        const mutationResult = await verifyFix(test.filePath);
-        // Restore the fix for the return
-        await writeFile(finding.file, patchedContent, "utf-8");
-
-        if (mutationResult.passed) {
-          // Test passes even with buggy code — it's not testing the right thing
-          await rollbackFix(finding.file, originalContent);
-          previousFailure = "Mutation check failed: test passes even after reverting the fix. The test may not be exercising the bug.";
-          continue;
-        }
-
-        const diff = generateDiff(originalContent, patchedContent, finding.file);
-        return {
-          finding,
-          status: "verified",
-          diff,
-          testOutput: result.output,
-          attempts: attempt,
-          filePath: finding.file,
-        };
+      if (!patchedContent || patchedContent.trim() === sourceCode.trim()) {
+        previousFailure = "Generated fix was empty or identical to the original.";
+        continue;
       }
 
-      await rollbackFix(finding.file, originalContent);
-      previousFailure = result.output.slice(0, 2000);
-    } catch (err) {
-      await rollbackFix(finding.file, originalContent);
-      previousFailure = err instanceof Error ? err.message : String(err);
-    }
-  }
+      // Fix minimality guard: reject disproportionately large fixes
+      const fixDiff = generateDiff(sourceCode, patchedContent, finding.file);
+      const fixChangedLines = fixDiff.split("\n").filter(
+        (l) => (l.startsWith("+") || l.startsWith("-")) && !l.startsWith("+++") && !l.startsWith("---")
+      ).length;
+      const sourceLineCount = sourceCode.split("\n").length;
+      const maxChangedLines = Math.max(10, Math.round(sourceLineCount * 0.5));
 
-  return {
-    finding,
-    status: "failed",
-    diff: "",
-    testOutput: previousFailure ?? "Max retries exceeded",
-    attempts: maxRetries,
-    filePath: finding.file,
-  };
+      if (fixChangedLines > maxChangedLines) {
+        previousFailure = `Fix too large: ${fixChangedLines} changed lines (max ${maxChangedLines}). A targeted fix should change fewer lines.`;
+        continue;
+      }
+
+      const originalContent = await applyFix(finding.file, patchedContent);
+
+      try {
+        const result = await verifyFix(test.filePath);
+
+        if (result.passed) {
+          // Mutation check: revert to buggy code and confirm test fails
+          await rollbackFix(finding.file, originalContent);
+          const mutationResult = await verifyFix(test.filePath);
+          // Restore the fix for the return
+          await writeFile(finding.file, patchedContent, "utf-8");
+
+          if (mutationResult.passed) {
+            // Test passes even with buggy code — it's not testing the right thing
+            await rollbackFix(finding.file, originalContent);
+            previousFailure = "Mutation check failed: test passes even after reverting the fix. The test may not be exercising the bug.";
+            continue;
+          }
+
+          const diff = generateDiff(originalContent, patchedContent, finding.file);
+          return {
+            finding,
+            status: "verified",
+            diff,
+            testOutput: result.output,
+            attempts: attempt,
+            filePath: finding.file,
+          };
+        }
+
+        await rollbackFix(finding.file, originalContent);
+        previousFailure = result.output.slice(0, 2000);
+      } catch (err) {
+        await rollbackFix(finding.file, originalContent);
+        previousFailure = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    return {
+      finding,
+      status: "failed",
+      diff: "",
+      testOutput: previousFailure ?? "Max retries exceeded",
+      attempts: maxRetries,
+      filePath: finding.file,
+    };
+  } finally {
+    // Disk now holds the final intended content: a verified fix (left applied
+    // on purpose) or the rolled-back original. Either way it is the intended
+    // state, so drop the file from the crash-recovery manifest.
+    await restore.release(finding.file);
+    if (ownGuard) restore.removeSignalHandler();
+  }
 }
 
 export async function fixAll(
@@ -254,18 +273,28 @@ export async function fixAll(
 
   const fileGroups = [...byFile.values()];
 
-  const results = await pMap(
-    fileGroups,
-    async (group) => {
-      const groupResults: FixVerification[] = [];
-      for (const finding of group) {
-        const test = testMap.get(findingKey(finding))!;
-        groupResults.push(await fixAndVerify(finding, test, provider, maxRetries));
-      }
-      return groupResults;
-    },
-    concurrency
-  );
+  // One shared guard so the crash-recovery manifest accumulates every file
+  // in flight across the concurrent groups, and a single SIGINT handler
+  // restores all of them.
+  const guard = new RestoreGuard();
+  guard.installSignalHandler();
 
-  return results.flat();
+  try {
+    const results = await pMap(
+      fileGroups,
+      async (group) => {
+        const groupResults: FixVerification[] = [];
+        for (const finding of group) {
+          const test = testMap.get(findingKey(finding))!;
+          groupResults.push(await fixAndVerify(finding, test, provider, maxRetries, guard));
+        }
+        return groupResults;
+      },
+      concurrency
+    );
+
+    return results.flat();
+  } finally {
+    guard.removeSignalHandler();
+  }
 }

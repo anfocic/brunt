@@ -236,6 +236,11 @@ export async function run(args: Args): Promise<number> {
   if (args.fix && args.noTests) {
     console.error("WARNING: --fix requires test generation. Use without --no-tests.");
   } else if (args.fix && tests.length > 0) {
+    console.error(
+      args.pr
+        ? "Note: --fix modifies files in your working tree; verified fixes are committed to a new branch."
+        : "Note: --fix modifies files in your working tree. Verified fixes are left applied — review with `git diff` and undo with `git checkout -- <file>` if unwanted."
+    );
     const fixSpinner = new Spinner(`Generating fixes and verifying (${tests.length} finding${tests.length === 1 ? "" : "s"})...`);
     fixSpinner.start();
     fixes = await fixAll(allFindings, tests, provider, args.concurrency, args.fixRetries);

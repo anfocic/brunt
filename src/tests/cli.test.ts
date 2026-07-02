@@ -4,6 +4,8 @@ import { spawnSync } from "child_process";
 import { join } from "path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import { parseArgs } from "../cli.js";
+import type { BruntConfig } from "../config.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI = join(__dirname, "..", "..", "dist", "cli.js");
@@ -116,5 +118,52 @@ describe("cli", () => {
     const { stdout } = run("help");
     assert.ok(stdout.includes("baseline"));
     assert.ok(stdout.includes("--no-baseline"));
+  });
+});
+
+function scan(flags: string[], config?: BruntConfig) {
+  return parseArgs(["node", "cli.js", "scan", ...flags], config);
+}
+
+describe("parseArgs config precedence", () => {
+  test("built-in defaults apply when neither CLI nor config set a value", () => {
+    const args = scan([]);
+    assert.strictEqual(args.provider, "claude-cli");
+    assert.strictEqual(args.format, "text");
+    assert.strictEqual(args.failOn, "medium");
+    assert.strictEqual(args.fixRetries, 2);
+    assert.strictEqual(args.fix, false);
+  });
+
+  test("config supplies values when the CLI flag is absent", () => {
+    const config: BruntConfig = {
+      settings: { provider: "ollama", model: "llama3", failOn: "high", fix: true, fixRetries: 4 },
+    };
+    const args = scan([], config);
+    assert.strictEqual(args.provider, "ollama");
+    assert.strictEqual(args.model, "llama3");
+    assert.strictEqual(args.failOn, "high");
+    assert.strictEqual(args.fix, true);
+    assert.strictEqual(args.fixRetries, 4);
+  });
+
+  test("an explicit CLI flag overrides the config value", () => {
+    const config: BruntConfig = { settings: { provider: "ollama", failOn: "high" } };
+    const args = scan(["--provider", "openai", "--fail-on", "low"], config);
+    assert.strictEqual(args.provider, "openai");
+    assert.strictEqual(args.failOn, "low");
+  });
+
+  test("config select drives vectors; --vectors overrides it", () => {
+    const config: BruntConfig = { select: ["correctness", "security"] };
+    assert.deepStrictEqual(scan([], config).vectors, ["correctness", "security"]);
+    assert.deepStrictEqual(scan(["--vectors", "security"], config).vectors, ["security"]);
+  });
+
+  test("boolean config settings only turn flags on", () => {
+    const config: BruntConfig = { settings: { verify: true, noTests: true } };
+    const args = scan([], config);
+    assert.strictEqual(args.verify, true);
+    assert.strictEqual(args.noTests, true);
   });
 });

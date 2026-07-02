@@ -1,10 +1,13 @@
-import { readFile, access, mkdir, writeFile, unlink } from "node:fs/promises";
+import { readFile, access, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Finding } from "../vectors/types.js";
 import type { Provider } from "@packages/llm";
 import { exec, pMap, cleanLlmResponse } from "../util.js";
+import { RestoreGuard, restoreFromManifest } from "../restore.js";
 
-const RESTORE_MANIFEST = ".brunt-restore";
+// Re-exported so the CLI startup path and tests keep importing it from here.
+// The implementation lives in ../restore.ts.
+export { restoreFromManifest };
 
 type TestFramework = {
   name: string;
@@ -192,35 +195,6 @@ export async function getBaseFileContent(
   return stdout;
 }
 
-type RestoreManifest = Record<string, string>;
-
-async function writeManifest(manifest: RestoreManifest): Promise<void> {
-  await writeFile(RESTORE_MANIFEST, JSON.stringify(manifest), "utf-8");
-}
-
-async function clearManifest(): Promise<void> {
-  try {
-    await unlink(RESTORE_MANIFEST);
-  } catch {}
-}
-
-/** On startup, check for stale manifest and restore files if found. */
-export async function restoreFromManifest(): Promise<boolean> {
-  let raw: string;
-  try {
-    raw = await readFile(RESTORE_MANIFEST, "utf-8");
-  } catch {
-    return false;
-  }
-
-  const manifest: RestoreManifest = JSON.parse(raw);
-  for (const [filePath, content] of Object.entries(manifest)) {
-    await writeFile(filePath, content, "utf-8");
-  }
-  await clearManifest();
-  return true;
-}
-
 export type BaseVerifyResult = {
   test: GeneratedTest;
   kept: boolean; // true = test passes on base (bug is in diff), false = fails on base too
@@ -248,72 +222,67 @@ export async function verifyTestsAgainstBase(
 
   const results = new Map<GeneratedTest, BaseVerifyResult>();
 
-  await pMap(
-    [...fileGroups.entries()],
-    async ([filePath, groupTests]) => {
-      // Get base version of this file
-      const baseContent = await getBaseFileContent(baseRef, filePath);
-      if (baseContent === null) {
-        // New file — can't check against base, keep all findings
-        for (const test of groupTests) {
-          results.set(test, { test, kept: true, reason: "new file (not in base)" });
+  // A single guard shared across all concurrent file groups. Its manifest
+  // accumulates every in-flight file, so an interrupt mid-run restores all of
+  // them — not just whichever group swapped last.
+  const guard = new RestoreGuard();
+  guard.installSignalHandler();
+
+  try {
+    await pMap(
+      [...fileGroups.entries()],
+      async ([filePath, groupTests]) => {
+        // Get base version of this file
+        const baseContent = await getBaseFileContent(baseRef, filePath);
+        if (baseContent === null) {
+          // New file — can't check against base, keep all findings
+          for (const test of groupTests) {
+            results.set(test, { test, kept: true, reason: "new file (not in base)" });
+          }
+          return;
         }
-        return;
-      }
 
-      // Read current file content
-      let currentContent: string;
-      try {
-        currentContent = await readFile(filePath, "utf-8");
-      } catch {
-        for (const test of groupTests) {
-          results.set(test, { test, kept: true, reason: "could not read current file" });
-        }
-        return;
-      }
-
-      // Serialize tests within this file group
-      for (const test of groupTests) {
-        // Write manifest before swapping
-        await writeManifest({ [filePath]: currentContent });
-
-        // Register SIGINT handler for this swap
-        const onInterrupt = () => {
-          const fs = require("node:fs");
-          fs.writeFileSync(filePath, currentContent, "utf-8");
-          try { fs.unlinkSync(RESTORE_MANIFEST); } catch {}
-          process.exit(130);
-        };
-        process.on("SIGINT", onInterrupt);
-
+        // Read current file content
+        let currentContent: string;
         try {
-          // Swap in base version
+          currentContent = await readFile(filePath, "utf-8");
+        } catch {
+          for (const test of groupTests) {
+            results.set(test, { test, kept: true, reason: "could not read current file" });
+          }
+          return;
+        }
+
+        // Record the original before swapping, then swap the base version in
+        // once for the whole group.
+        await guard.register(filePath, currentContent);
+        try {
           await writeFile(filePath, baseContent, "utf-8");
 
-          // Run the test against base version
-          const { cmd, args } = await detectTestCommand(test.filePath);
-          const result = await exec(cmd, args, { timeout: 30_000 });
-          const testFailed = result.exitCode !== 0;
+          for (const test of groupTests) {
+            const { cmd, args } = await detectTestCommand(test.filePath);
+            const result = await exec(cmd, args, { timeout: 30_000 });
+            const testFailed = result.exitCode !== 0;
 
-          if (testFailed) {
-            // Test fails on base too — bug is pre-existing or test is wrong
-            results.set(test, { test, kept: false, reason: "test also fails on base branch" });
-          } else {
-            // Test passes on base — the diff introduced the bug
-            results.set(test, { test, kept: true, reason: "test passes on base (bug is in diff)" });
+            if (testFailed) {
+              // Test fails on base too — bug is pre-existing or test is wrong
+              results.set(test, { test, kept: false, reason: "test also fails on base branch" });
+            } else {
+              // Test passes on base — the diff introduced the bug
+              results.set(test, { test, kept: true, reason: "test passes on base (bug is in diff)" });
+            }
           }
         } finally {
-          // Always restore current content
+          // Always restore current content, then drop it from the manifest.
           await writeFile(filePath, currentContent, "utf-8");
-          process.removeListener("SIGINT", onInterrupt);
+          await guard.release(filePath);
         }
-      }
-
-      // All tests for this file done, clear manifest
-      await clearManifest();
-    },
-    concurrency
-  );
+      },
+      concurrency
+    );
+  } finally {
+    guard.removeSignalHandler();
+  }
 
   // Return in original test order
   return tests.map((t) => results.get(t)!);

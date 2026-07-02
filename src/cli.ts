@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { run, runBaseline, runAudit } from "./runner.js";
+import { loadConfig, type BruntConfig } from "./config.js";
 
 export type Args = {
   command: "scan" | "baseline" | "audit";
@@ -35,7 +36,8 @@ function detectDefaultDiff(): string {
   return "HEAD~1";
 }
 
-export function parseArgs(argv: string[]): Args {
+export function parseArgs(argv: string[], config?: BruntConfig): Args {
+  const s = config?.settings;
   const args = argv.slice(2);
   const command = args[0] ?? "help";
 
@@ -145,27 +147,28 @@ export function parseArgs(argv: string[]): Args {
     }
   }
 
+  // Precedence: explicit CLI flag > config setting > built-in default.
   return {
     command: (command === "baseline" ? "baseline" : command === "audit" ? "audit" : "scan") as Args["command"],
     diff: diff ?? detectDefaultDiff(),
-    provider: provider ?? "claude-cli",
-    format: format ?? "text",
-    failOn: failOn ?? "medium",
-    vectors,
-    scope,
+    provider: provider ?? s?.provider ?? "claude-cli",
+    format: format ?? s?.format ?? "text",
+    failOn: failOn ?? s?.failOn ?? "medium",
+    vectors: vectors ?? config?.select,
+    scope: scope ?? s?.scope,
     configPath,
-    noTests,
-    noCache,
+    noTests: noTests || (s?.noTests ?? false),
+    noCache: noCache || (s?.noCache ?? false),
     noBaseline,
     prComment,
-    maxTokens,
-    model,
+    maxTokens: maxTokens ?? s?.maxTokens,
+    model: model ?? s?.model,
     baselinePath,
     concurrency: 3,
-    fix,
-    fixRetries: fixRetries ?? 2,
+    fix: fix || (s?.fix ?? false),
+    fixRetries: fixRetries ?? s?.fixRetries ?? 2,
     pr,
-    verify,
+    verify: verify || (s?.verify ?? false),
   };
 }
 
@@ -204,12 +207,31 @@ OPTIONS
   --fix                 Auto-generate fixes and verify against proof tests
   --fix-retries <n>     Max fix attempts per finding (default: 2, max: 5)
   --pr                  Create a PR with verified fixes (requires --fix)
+
+CONFIG (brunt.config.yaml, auto-detected or via --config)
+  Settings mirror the flags above and act as defaults (CLI overrides them):
+    provider, model, format, failOn, scope, maxTokens, fixRetries,
+    fix, verify, noTests, noCache
+  vectors:            List the vectors to run. Entries are either a built-in
+                      name (e.g. "correctness") or a custom vector object with
+                      name/description/prompt.
 `);
+}
+
+function extractConfigPath(argv: string[]): string | undefined {
+  const args = argv.slice(2);
+  const idx = args.indexOf("--config");
+  return idx !== -1 ? args[idx + 1] : undefined;
 }
 
 async function main() {
   try {
-    const args = parseArgs(process.argv);
+    const command = process.argv[2];
+    const isHelp = !command || command === "help" || command === "--help" || command === "-h";
+    // Load config before parsing so it can supply defaults, but skip it for
+    // `help` so a broken config in the cwd never blocks usage output.
+    const config = isHelp ? undefined : await loadConfig(extractConfigPath(process.argv));
+    const args = parseArgs(process.argv, config);
     const exitCode = args.command === "baseline"
       ? await runBaseline(args)
       : args.command === "audit"

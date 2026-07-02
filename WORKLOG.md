@@ -1,5 +1,55 @@
 # Brunt Worklog
 
+## 2026-07-02 — Clone + reliability & config fixes
+
+### Done
+- Cloned `anfocic/brunt` to `~/Desktop/apps/brunt` (full history), branch
+  `fix/worktree-safety-and-config`. Baseline: 286/286 hermetic tests green (the 5
+  `runner.test.ts` integration tests fail only because the `claude` CLI isn't installed
+  here — environmental, not a regression).
+- **Fixed base-branch verification data-loss (High).** The `.brunt-restore` manifest was
+  overwritten on every swap, so a crash during a concurrent multi-file `--verify` run could
+  recover only the last file and silently lose the rest. New `src/restore.ts` `RestoreGuard`:
+  one cumulative manifest across all in-flight files + a single SIGINT handler restoring every
+  one. `test-gen.ts` `verifyTestsAgainstBase` rewritten to use it (swaps each file once per
+  group instead of per-test).
+- **Fixed `--fix` crash-safety (High).** `fix/fix-gen.ts` had no recovery; a kill mid-fix left
+  source files as raw LLM output. `fixAndVerify` now registers the original with the shared
+  guard before any write and releases on every exit path; `fixAll` installs one guard for the
+  concurrent run. Added a stderr notice that `--fix` modifies the working tree.
+- **Fixed the config schema gap.** `brunt.config.yaml` previously accepted only custom-vector
+  objects and silently ignored provider/model/failOn/etc. `config.ts` now supports settings
+  (provider, model, format, failOn, scope, maxTokens, fixRetries, fix, verify, noTests,
+  noCache) and `vectors` entries as built-in names (strings) or custom defs (objects).
+  Precedence CLI > config > default via `parseArgs(argv, config)`; `cli.ts main()` loads
+  config before parsing (skips `help`). Help text documents config.
+- Added tests: `restore.test.ts` (7), `config-settings.test.ts` (8), `cli.test.ts` +5
+  (parseArgs precedence). Suite now 306/306 hermetic green.
+- Confirmed brunt runs fully standalone (no config file needed). Verified end-to-end against a
+  config of the shape that previously crashed ("must be an object"): now parses, applies its
+  settings (e.g. `provider`), and gives a clear `Unknown vector` error for names that are
+  neither built-in nor defined. (`resilience`/`performance`/`business-logic` were built-ins in
+  v0.1, since removed — only `correctness`/`security` remain.)
+
+### In progress
+- none. Changes are UNCOMMITTED on `fix/worktree-safety-and-config` — fole to review before commit/PR.
+
+### Next
+- Commit the branch and open a PR (not pushed — waiting on fole).
+- Work the remaining bug backlog in CLAUDE.md (openai max_tokens truncation, verify=exit-code,
+  runner-detector mismatch, cargo whole-suite, default model id, cache key, exec maxBuffer).
+- **The demo:** wire ctx into brunt as a context provider (sibling to `crossref.ts`) behind a
+  flag, local-CLI only, to surface regression findings. Pick the meaty project whose local
+  agent history ctx will index; run the `ctx setup`/`search` feasibility gate first.
+
+### Decisions
+- `vectors` in config means "the exact set to run" (built-in names or inline custom defs),
+  not "extra customs added to all built-ins" — clearer, matches the CRM config's intent.
+- Verified fixes are deliberately left applied on disk (needed for `--pr`); crash-safety is
+  about recovering from *interruption*, not auto-reverting a completed fix. Added a notice.
+- Kept `restoreFromManifest`/`getBaseFileContent` exported from `proof/test-gen.js` (existing
+  imports/tests unchanged); implementation moved to `src/restore.ts`.
+
 ## 2026-03-28 — v0.4 AI showcase
 
 ### What was done
